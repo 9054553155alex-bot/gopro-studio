@@ -5,21 +5,22 @@ import time
 import os
 
 GOPRO_IP = "10.5.5.9"
-DOWNLOAD_DIR = "/storage/emulated/0/Download"
 
 def main(page: ft.Page):
-    page.title = "SlowMo Control 2.0"
-    page.theme_mode = ft.ThemeMode.DARK
+    page.title = "SlowMo Control 1.5.50 (GoPro Edition)"
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.window_width = 1000
+    page.window_height = 800
     page.padding = 20
     page.scroll = ft.ScrollMode.AUTO
 
     selected_video = [None]
     selected_music = [None]
 
-    status_text = ft.Text("Готов к работе", color="white", size=13)
+    status_text = ft.Text("Ожидание действий...", color="gray", size=13)
     progress_bar = ft.ProgressBar(value=0, visible=False)
 
-    # 1. ТАЙМЕР И КНОПКА PLAY (через текст для 100% стабильности в APK)
+    # 1. ТАЙМЕР ЗАПИСИ
     slider_time = ft.Slider(min=3, max=15, divisions=12, label="{value} сек", value=5, width=200)
 
     def start_timed_recording(e):
@@ -37,49 +38,88 @@ def main(page: ft.Page):
             page.update()
         threading.Thread(target=task).start()
 
+    # Кнопка Play (без капризного alignment)
     play_btn = ft.Container(
         content=ft.Text("▶", color="white", size=22, weight="bold"),
         bgcolor="black",
         border_radius=10,
         width=50,
         height=50,
-        alignment=ft.alignment.center,
         on_click=start_timed_recording
     )
 
-    # ВЫБОР ФАЙЛОВ (Текстовые поля для надежности на Android)
-    video_input = ft.TextField(label="Видео из Download", value="GX011011.MP4", width=250)
-    music_input = ft.TextField(label="Музыка (опционально)", value="", width=250)
+    # ДИАЛОГИ ВЫБОРА ФАЙЛОВ
+    def on_video_picked(e):
+        if e.files:
+            selected_video[0] = e.files[0].path
+            btn_choose_video.text = f"✅ {e.files[0].name}"
+            status_text.value = f"Загружено видео: {e.files[0].name}"
+            page.update()
 
-    # 4. КОМПАКТНЫЕ 5 ОТРЕЗКОВ
+    def on_music_picked(e):
+        if e.files:
+            selected_music[0] = e.files[0].path
+            btn_choose_music.text = f"🎵 {e.files[0].name}"
+            status_text.value = f"Загружен трек: {e.files[0].name}"
+            page.update()
+
+    video_picker = ft.FilePicker()
+    video_picker.on_result = on_video_picked
+
+    music_picker = ft.FilePicker()
+    music_picker.on_result = on_music_picked
+
+    # КРАСНЫЕ КНОПКИ
+    btn_choose_video = ft.ElevatedButton(
+        "Выбрать видео", 
+        bgcolor="red", 
+        color="white", 
+        on_click=lambda _: video_picker.pick_files(file_type=ft.FilePickerFileType.VIDEO)
+    )
+    
+    btn_choose_music = ft.ElevatedButton(
+        "Выбрать музыку", 
+        bgcolor="red", 
+        color="white", 
+        on_click=lambda _: music_picker.pick_files(file_type=ft.FilePickerFileType.AUDIO)
+    )
+
+    btn_convert = ft.ElevatedButton(
+        "🎬 Конвертировать", 
+        bgcolor="red", 
+        color="white"
+    )
+
+    # КОМПАКТНЫЕ 5 ОТРЕЗКОВ
     def create_compact_dropdown():
         return ft.Container(
             content=ft.Dropdown(
-                width=65,
+                width=75,
                 height=38,
                 value="1.0x",
                 options=[ft.dropdown.Option(x) for x in ["0.1x", "0.2x", "0.5x", "1.0x", "2.0x"]],
-                border_color="transparent",
                 color="black",
-                text_size=11
+                text_size=12
             ),
             bgcolor="white",
-            border=ft.border.all(1, "black"),
             border_radius=8,
-            padding=ft.padding.only(left=2, right=2)
+            padding=2
         )
 
-    s1, s2, s3, s4, s5 = [create_compact_dropdown() for _ in range(5)]
+    s1 = create_compact_dropdown()
+    s2 = create_compact_dropdown()
+    s3 = create_compact_dropdown()
+    s4 = create_compact_dropdown()
+    s5 = create_compact_dropdown()
 
-    # 5. КАЧЕСТВО
+    # КАЧЕСТВО И РАЗРЕШЕНИЕ
     res_dropdown = ft.Dropdown(
         width=180, value="1920x1080",
         options=[
             ft.dropdown.Option("1920x1080", "1920x1080"),
             ft.dropdown.Option("2704x1520", "2.7K (2704x1520)"),
             ft.dropdown.Option("3840x2160", "4K (3840x2160)"),
-        ],
-        border_color="black"
+        ]
     )
 
     fps_dropdown = ft.Dropdown(
@@ -88,8 +128,7 @@ def main(page: ft.Page):
             ft.dropdown.Option("30", "30 FPS"),
             ft.dropdown.Option("60", "60 FPS"),
             ft.dropdown.Option("120", "120 FPS"),
-        ],
-        border_color="black"
+        ]
     )
 
     switch_parts = ft.Switch(value=True, label="Разбивать по частям")
@@ -99,53 +138,63 @@ def main(page: ft.Page):
         try:
             res = requests.get(f"http://{GOPRO_IP}:8080/gp/gpControl/status", timeout=3)
             if res.status_code == 200:
-                status_text.value = "✅ GoPro подключена!"
+                status_text.value = "✅ GoPro успешно подключена!"
                 status_text.color = "green"
             else:
-                status_text.value = f"⚠️ Ошибка ответа: {res.status_code}"
+                status_text.value = f"⚠️ Ошибка ответа GoPro: {res.status_code}"
                 status_text.color = "orange"
         except Exception:
-            status_text.value = "❌ Нет связи с GoPro"
+            status_text.value = "❌ Ошибка: GoPro не найдена по Wi-Fi"
             status_text.color = "red"
         page.update()
 
-    # 6 & 7. КРАСНЫЕ КНОПКИ
-    btn_convert = ft.ElevatedButton("🎬 Конвертировать", bgcolor="red", color="white", width=250)
-
-    # ИНТЕРФЕЙС
+    # ЛЕВАЯ КОЛОНКА
     left_column = ft.Column([
         ft.Row([
             play_btn,
             ft.Column([
-                ft.Text("Время записи (сек)", size=12, color="gray"),
+                ft.Text("Время записи камеры (сек)", size=12, color="gray"),
                 slider_time
             ])
         ]),
-        ft.Container(height=140, bgcolor="black", border_radius=8, content=ft.Text("ПЛЕЕР", text_align=ft.TextAlign.CENTER)),
+        ft.Container(height=180, bgcolor="black", border_radius=8),
         ft.Text("Музыка", size=12, color="gray"),
-        music_input,
-        ft.Divider(height=10),
+        ft.Slider(min=0, max=100, value=50, active_color="red"),
+        btn_choose_music,
+        ft.Divider(height=15),
         switch_parts,
-        ft.Row([s1, s2, s3, s4, s5], spacing=4),
+        ft.Row([s1, s2, s3, s4, s5], spacing=5),
         ft.Divider(height=10),
-        video_input,
+        btn_choose_video,
         btn_convert,
     ], expand=6)
 
+    # ПРАВАЯ КОЛОНКА
     right_column = ft.Column([
         ft.Text("Настройка камеры", weight="bold"),
-        ft.Divider(height=5),
-        ft.Text("GoPro Wi-Fi", weight="bold", size=12),
+        ft.Divider(height=10),
+        ft.Text("Подключение GoPro", weight="bold", size=13),
         switch_wifi,
         ft.ElevatedButton("Подключить GoPro", on_click=connect_gopro),
-        ft.Divider(height=10),
-        ft.Text("Качество", weight="bold", size=12),
-        res_dropdown,
-        fps_dropdown,
+        ft.Divider(height=15),
+        ft.Text("Подключение телефона", weight="bold", size=13),
+        ft.OutlinedButton("Подключить Phone"),
+        ft.Divider(height=15),
+        ft.Container(
+            content=ft.Column([
+                ft.Text("Качество", weight="bold", size=13),
+                ft.Text("Разрешение:", size=12),
+                res_dropdown,
+                ft.Text("FPS:", size=12),
+                fps_dropdown,
+            ]),
+            padding=10,
+            border_radius=8
+        )
     ], expand=4)
 
     page.add(
-        ft.Row([left_column, ft.VerticalDivider(width=10), right_column], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START),
+        ft.Row([left_column, ft.VerticalDivider(width=20), right_column], vertical_alignment=ft.CrossAxisAlignment.START),
         ft.Divider(),
         progress_bar,
         status_text
