@@ -86,7 +86,7 @@ def main(page: ft.Page):
         border_radius=12,
     )
 
-    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ (ИСПРАВЛЕННЫЙ ВЫЗОВ FILEPICKER)
+    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ
     video_label = ft.Text("Выбери видео", color="white", size=14)
     music_label = ft.Text("Без музыки (нажми для выбора)", color="gray", size=14)
 
@@ -104,7 +104,6 @@ def main(page: ft.Page):
             music_label.color = CYAN_ACCENT
             page.update()
 
-    # Раздельная инициализация и назначение event-handler'а
     video_picker = ft.FilePicker()
     video_picker.on_result = on_video_picked
 
@@ -116,7 +115,7 @@ def main(page: ft.Page):
     btn_select_video = ft.Container(
         content=ft.Column([
             ft.Text("Видео файл", size=11, color="gray"),
-            ft.Row([video_label, ft.Icon(ft.icons.FOLDER_OPEN, color="gray", size=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+            ft.Row([video_label, ft.Icon("folder_open", color="gray", size=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
         ], spacing=2),
         bgcolor=INPUT_BG,
         border=ft.border.all(1, BORDER_COLOR),
@@ -128,7 +127,7 @@ def main(page: ft.Page):
     btn_select_music = ft.Container(
         content=ft.Column([
             ft.Text("Аудио трек", size=11, color="gray"),
-            ft.Row([music_label, ft.Icon(ft.icons.FOLDER_OPEN, color="gray", size=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+            ft.Row([music_label, ft.Icon("folder_open", color="gray", size=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
         ], spacing=2),
         bgcolor=INPUT_BG,
         border=ft.border.all(1, BORDER_COLOR),
