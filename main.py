@@ -1,4 +1,3 @@
-
 import flet as ft
 import requests
 
@@ -6,13 +5,15 @@ def main(page: ft.Page):
     page.title = "Alex Slow Mo Studio"
     page.theme_mode = ft.ThemeMode.DARK
     page.scroll = ft.ScrollMode.AUTO
-    page.padding = ft.padding.only(top=50, left=20, right=20, bottom=30)
+    
+    # Безопасный отступ сверху для статус-бара
+    page.padding = ft.Padding(left=20, top=50, right=20, bottom=30)
 
     # Переменные состояния
     selected_file = ft.Text("Файл не выбран", color="grey", size=14)
     status_text = ft.Text("Подключи GoPro к Wi-Fi", color="yellow", size=15)
 
-    # 1. Логика GoPro
+    # 1. Логика управления GoPro
     def check_connection(e):
         try:
             resp = requests.get("http://10.5.5.9/gp/gpControl", timeout=2)
@@ -47,7 +48,7 @@ def main(page: ft.Page):
     file_picker = ft.FilePicker(on_result=pick_video_result)
     page.overlay.append(file_picker)
 
-    # ИНТЕРФЕЙС
+    # ИНТЕРФЕЙС ПРИЛОЖЕНИЯ
     page.add(
         ft.Text("Alex Slow Mo Studio", size=26, weight="bold", color="#00d2ff"),
         ft.Divider(height=15, color="transparent"),
