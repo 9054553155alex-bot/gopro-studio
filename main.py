@@ -38,14 +38,14 @@ def main(page: ft.Page):
             status_text.value = "❌ Нет связи с GoPro"
         page.update()
 
-    # 2. Выбор файлов
+    # 2. Выбор файлов (исправленная логика)
     def pick_video_result(e: ft.FilePickerResultEvent):
         if e.files:
             selected_file.value = f"📹 Видео: {e.files[0].name}"
             selected_file.color = "white"
             page.update()
 
-    file_picker = ft.FilePicker(on_result=pick_video_result)
+    file_picker = ft.FilePicker()
     page.overlay.append(file_picker)
 
     # ИНТЕРФЕЙС ПРИЛОЖЕНИЯ
@@ -84,7 +84,11 @@ def main(page: ft.Page):
                 ft.ElevatedButton(
                     "Выбрать видео", 
                     icon=ft.icons.VIDEO_LIBRARY,
-                    on_click=lambda _: file_picker.pick_files(allow_multiple=False, allowed_extensions=["mp4", "mov"])
+                    on_click=lambda _: file_picker.pick_files(
+                        allow_multiple=False, 
+                        allowed_extensions=["mp4", "mov"],
+                        on_result=pick_video_result
+                    )
                 ),
                 selected_file,
                 
