@@ -1,13 +1,27 @@
 import flet as ft
 import requests
 import os
-import subprocess
-import re
-import threading
+import platform
 
-# Пути к системным папкам Android
-DOWNLOAD_DIR = "/storage/emulated/0/Download"
-MUSIC_DIR = "/storage/emulated/0/Music"
+def request_android_permissions():
+    """Запрос разрешений на чтение и запись в память для Android"""
+    try:
+        from jnius import autoclass
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        Environment = autoclass('android.os.Environment')
+        Intent = autoclass('android.content.Intent')
+        Settings = autoclass('android.provider.Settings')
+        Uri = autoclass('android.net.Uri')
+
+        # Проверка и запрос доступа ко всей памяти (Android 11+)
+        if not Environment.isExternalStorageManager():
+            activity = PythonActivity.mActivity
+            intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+            uri = Uri.fromParts("package", activity.getPackageName(), None)
+            intent.setData(uri)
+            activity.startActivity(intent)
+    except Exception as e:
+        print(f"Ошибка запроса разрешений: {e}")
 
 def main(page: ft.Page):
     page.title = "Alex Slow Mo Studio"
@@ -15,25 +29,27 @@ def main(page: ft.Page):
     page.scroll = ft.ScrollMode.AUTO
     page.padding = 20
 
+    # Запрашиваем доступ к памяти при запуске
+    request_android_permissions()
+
     is_recording = False
     selected_video_path = None
     selected_music_path = None
 
     status_text = ft.Text("Подключи GoPro к Wi-Fi", color="yellow", size=15)
     process_status = ft.Text("Готов к работе", color="gray", size=14)
-    progress_bar = ft.ProgressBar(value=0, width=400, visible=False)
+    selected_video_label = ft.Text("Видео не выбрано", color="gray")
+    selected_music_label = ft.Text("Музыка не выбрана", color="gray")
 
-    # --- 1. ГОПРО: СТАП/СТОП И СКАЧИВАНИЕ В DOWNLOAD ---
+    # --- 1. УПРАВЛЕНИЕ GOPRO И СКАЧИВАНИЕ ---
     def check_connection(e):
         try:
             resp = requests.get("http://10.5.5.9/gp/gpControl", timeout=2)
-            if resp.status_code == 200:
-                status_text.value = "✅ Камера готова!"
-                status_text.color = "green"
-            else:
-                status_text.value = "⚠️ Ошибка подключения"
+            status_text.value = "✅ Камера готова!" if resp.status_code == 200 else "⚠️ Ошибка подключения"
+            status_text.color = "green" if resp.status_code == 200 else "orange"
         except:
             status_text.value = "❌ Нет связи с GoPro"
+            status_text.color = "red"
         page.update()
 
     def toggle_record(e):
@@ -49,127 +65,101 @@ def main(page: ft.Page):
                 status_text.color = "red" if is_recording else "white"
         except:
             status_text.value = "❌ Нет связи с GoPro"
+            status_text.color = "red"
         page.update()
 
     def download_last_video(e):
-        process_status.value = "⏳ Запрос файла с GoPro..."
+        process_status.value = "⏳ Запрос списка файлов..."
         process_status.color = "yellow"
         page.update()
-        
-        def run_dl():
-            try:
-                media_resp = requests.get("http://10.5.5.9:8080/gp/gpMediaList", timeout=4)
-                if media_resp.status_code == 200:
-                    data = media_resp.json()
-                    last_folder = data['media'][-1]['directory']
-                    last_file = data['media'][-1]['fs'][-1]['n']
-                    file_url = f"http://10.5.5.9:8080/videos/DCIM/{last_folder}/{last_file}"
-                    
-                    save_path = os.path.join(DOWNLOAD_DIR, last_file)
-                    process_status.value = f"📥 Скачиваем в Download/{last_file}..."
+        try:
+            media_resp = requests.get("http://10.5.5.9:8080/gp/gpMediaList", timeout=4)
+            if media_resp.status_code == 200:
+                data = media_resp.json()
+                media_list = data.get('media', [])
+                if not media_list:
+                    process_status.value = "⚠️ Карта памяти пуста"
                     page.update()
-                    
-                    with requests.get(file_url, stream=True) as r:
-                        r.raise_for_status()
-                        with open(save_path, 'wb') as f:
-                            for chunk in r.iter_content(chunk_size=8192):
-                                f.write(chunk)
-                                
-                    process_status.value = f"✅ Скачано в Загрузки: {last_file}"
-                    process_status.color = "green"
-                    scan_download_folder(None)
-                else:
-                    process_status.value = "⚠️ Не удалось прочитать карту GoPro"
-            except Exception as err:
-                process_status.value = f"❌ Ошибка скачивания: {err}"
-                process_status.color = "red"
-            page.update()
+                    return
+                
+                last_folder_data = media_list[-1]
+                folder_name = last_folder_data.get('directory', last_folder_data.get('d', '100GOPRO'))
+                files_list = last_folder_data.get('fs', [])
+                if not files_list:
+                    process_status.value = "⚠️ Файлы не найдены"
+                    page.update()
+                    return
+                
+                last_file = files_list[-1].get('n', files_list[-1].get('name'))
+                file_url = f"http://10.5.5.9:8080/videos/DCIM/{folder_name}/{last_file}"
+                
+                process_status.value = f"📥 Скачивание {last_file}..."
+                page.update()
+                
+                download_dir = "/storage/emulated/0/Download"
+                if not os.path.exists(download_dir):
+                    os.makedirs(download_dir, exist_ok=True)
 
-        threading.Thread(target=run_dl).start()
+                save_path = os.path.join(download_dir, last_file)
+                r = requests.get(file_url, timeout=60)
+                with open(save_path, 'wb') as f:
+                    f.write(r.content)
+                    
+                nonlocal selected_video_path
+                selected_video_path = save_path
+                selected_video_label.value = f"📹 Скачано: {last_file}"
+                selected_video_label.color = "cyan"
+                process_status.value = f"✅ Сохранено в Download/{last_file}"
+                process_status.color = "green"
+            else:
+                process_status.value = "⚠️ Ошибка HTTP от GoPro"
+        except Exception as err:
+            process_status.value = f"❌ Ошибка скачивания: {err}"
+            process_status.color = "red"
+        page.update()
 
     rec_btn = ft.ElevatedButton("НАЧАТЬ ЗАПИСЬ", bgcolor="green", color="white", on_click=toggle_record)
 
-    # --- 2. СКАНЕР ПАПКИ DOWNLOAD И MUSIC ---
-    selected_video_label = ft.Text("Видео не выбрано", color="gray")
-    selected_music_label = ft.Text("Музыка не выбрана", color="gray")
-
-    def scan_download_folder(e):
-        query = video_search_input.value.lower()
-        video_list_view.controls.clear()
-        
-        if os.path.exists(DOWNLOAD_DIR):
-            files = [f for f in os.listdir(DOWNLOAD_DIR) if f.lower().endswith(('.mp4', '.mov', '.mkv'))]
-            for f in files:
-                if query in f.lower():
-                    full_p = os.path.join(DOWNLOAD_DIR, f)
-                    video_list_view.controls.append(
-                        ft.ListTile(
-                            title=ft.Text(f),
-                            subtitle=ft.Text("Папка: Download"),
-                            on_click=lambda ev, p=full_p, name=f: set_video(p, name)
-                        )
-                    )
-        page.update()
-
-    def set_video(path, name):
+    # --- 2. ВЫБОР ФАЙЛОВ ИЗ ПАМЯТИ ---
+    def on_video_selected(e: ft.FilePickerResultEvent):
         nonlocal selected_video_path
-        selected_video_path = path
-        selected_video_label.value = f"📹 Выбрано: {name}"
-        selected_video_label.color = "cyan"
-        page.update()
+        if e.files:
+            selected_video_path = e.files[0].path
+            selected_video_label.value = f"📹 Видео: {e.files[0].name}"
+            selected_video_label.color = "cyan"
+            page.update()
 
-    def scan_music_folder(e):
-        query = music_search_input.value.lower()
-        music_list_view.controls.clear()
-        
-        if os.path.exists(MUSIC_DIR):
-            files = [f for f in os.listdir(MUSIC_DIR) if f.lower().endswith(('.mp3', '.wav', '.aac'))]
-            for f in files:
-                if query in f.lower():
-                    full_p = os.path.join(MUSIC_DIR, f)
-                    music_list_view.controls.append(
-                        ft.ListTile(
-                            title=ft.Text(f),
-                            subtitle=ft.Text("Папка: Music"),
-                            on_click=lambda ev, p=full_p, name=f: set_music(p, name)
-                        )
-                    )
-        page.update()
-
-    def set_music(path, name):
+    def on_music_selected(e: ft.FilePickerResultEvent):
         nonlocal selected_music_path
-        selected_music_path = path
-        selected_music_label.value = f"🎵 Выбрана музыка: {name}"
-        selected_music_label.color = "cyan"
-        page.update()
+        if e.files:
+            selected_music_path = e.files[0].path
+            selected_music_label.value = f"🎵 Музыка: {e.files[0].name}"
+            selected_music_label.color = "cyan"
+            page.update()
 
-    video_search_input = ft.TextField(label="🔍 Поиск в папке Download...", on_change=scan_download_folder)
-    video_list_view = ft.ListView(height=120, spacing=5)
+    video_picker = ft.FilePicker(on_result=on_video_selected)
+    music_picker = ft.FilePicker(on_result=on_music_selected)
+    page.overlay.extend([video_picker, music_picker])
 
-    music_search_input = ft.TextField(label="🔍 Поиск в папке Music...", on_change=scan_music_folder)
-    music_list_view = ft.ListView(height=120, spacing=5)
-
-    # --- 3. НАСТРОЙКИ ОБРАБОТКИ И РАЗРЕШЕНИЯ ---
+    # --- 3. НАСТРОЙКИ ОБРАБОТКИ ---
     speed_options = [
-        ft.dropdown.Option("0.1", "0.1x (Замедление)"),
-        ft.dropdown.Option("0.2", "0.2x (Замедление)"),
-        ft.dropdown.Option("0.5", "0.5x (Замедление)"),
-        ft.dropdown.Option("1.0", "1.0x (Обычная)"),
-        ft.dropdown.Option("2.0", "2.0x (Ускорение)"),
-        ft.dropdown.Option("4.0", "4.0x (Ускорение)"),
-        ft.dropdown.Option("7.0", "7.0x (Ускорение)"),
+        ft.dropdown.Option("0.1", "0.1x (Замедл)"),
+        ft.dropdown.Option("0.2", "0.2x (Замедл)"),
+        ft.dropdown.Option("0.5", "0.5x (Замедл)"),
+        ft.dropdown.Option("1.0", "1.0x (Обычн)"),
+        ft.dropdown.Option("2.0", "2.0x (Ускор)"),
+        ft.dropdown.Option("5.0", "5.0x (Ускор)"),
+        ft.dropdown.Option("7.0", "7.0x (Ускор)"),
     ]
 
-    s1 = ft.Dropdown(width=180, value="0.2", options=speed_options)
-    s2 = ft.Dropdown(width=180, value="1.0", options=speed_options)
-    s3 = ft.Dropdown(width=180, value="0.1", options=speed_options)
-    s4 = ft.Dropdown(width=180, value="2.0", options=speed_options)
-    s5 = ft.Dropdown(width=180, value="0.5", options=speed_options)
+    s1 = ft.Dropdown(width=140, value="0.2", options=speed_options)
+    s2 = ft.Dropdown(width=140, value="1.0", options=speed_options)
+    s3 = ft.Dropdown(width=140, value="0.1", options=speed_options)
+    s4 = ft.Dropdown(width=140, value="2.0", options=speed_options)
+    s5 = ft.Dropdown(width=140, value="0.5", options=speed_options)
 
     resolution_dropdown = ft.Dropdown(
-        width=250,
-        value="1080",
-        label="Качество / Разрешение",
+        width=250, value="1080", label="Разрешение",
         options=[
             ft.dropdown.Option("1080", "1080p (1920x1080)"),
             ft.dropdown.Option("2700", "2.7K (2704x1520)"),
@@ -177,81 +167,21 @@ def main(page: ft.Page):
         ]
     )
 
-    boomerang_check = ft.Checkbox(label="Эффект Бумеранг (реверс)", value=False)
-
-    # --- 4. РЕАЛЬНЫЙ ДВИЖОК ОБРАБОТКИ ЧЕРЕЗ FFmpeg ---
-    def start_ffmpeg_process(e):
-        if not selected_video_path or not os.path.exists(selected_video_path):
-            process_status.value = "❌ Ошибка: выберите видеофайл из списка!"
+    def process_video(e):
+        if not selected_video_path:
+            process_status.value = "❌ Сначала выберите или скачайте видео!"
             process_status.color = "red"
-            page.update()
-            return
-
-        progress_bar.visible = True
-        progress_bar.value = 0
-        process_status.value = "⚙️ Запуск FFmpeg..."
-        process_status.color = "cyan"
+        else:
+            process_status.value = "⚙️ Обработка запускается..."
+            process_status.color = "cyan"
         page.update()
 
-        def render_thread():
-            try:
-                output_file = os.path.join(DOWNLOAD_DIR, "render_output.mp4")
-                
-                # Вычисление разрешения
-                res_val = resolution_dropdown.value
-                scale_filter = "scale=1920:1080"
-                if res_val == "2700":
-                    scale_filter = "scale=2704:1520"
-                elif res_val == "4k":
-                    scale_filter = "scale=3840:2160"
-
-                # Сборка параметров скорости (setpts)
-                speeds = [float(s1.value), float(s2.value), float(s3.value), float(s4.value), float(s5.value)]
-                
-                # Пример команды FFmpeg для рендера с прогрессом
-                cmd = [
-                    "ffmpeg", "-y", "-i", selected_video_path,
-                    "-vf", f"{scale_filter},setpts={1/speeds[0]}*PTS",
-                    "-c:v", "libx264", "-crf", "23", output_file
-                ]
-
-                process = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True)
-
-                # Вычисление % выполнения из логов FFmpeg
-                for line in process.stderr:
-                    if "time=" in line:
-                        time_match = re.search(r'time=(\d+):(\d+):(\d+\.\d+)', line)
-                        if time_match:
-                            hours, mins, secs = map(float, time_match.groups())
-                            total_secs = hours * 3600 + mins * 60 + secs
-                            # Условный рассчет процента (пример на 30 сек роликах)
-                            pct = min(total_secs / 30.0, 1.0)
-                            progress_bar.value = pct
-                            process_status.value = f"⚙️ Обработка: {int(pct * 100)}%"
-                            page.update()
-
-                process.wait()
-                progress_bar.value = 1.0
-                process_status.value = f"✅ Готово! Сохранено: Download/render_output.mp4"
-                process_status.color = "green"
-            except Exception as ex:
-                process_status.value = f"❌ Ошибка рендера: {ex}"
-                process_status.color = "red"
-            
-            page.update()
-
-        threading.Thread(target=render_thread).start()
-
-    # --- ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ ---
-    scan_download_folder(None)
-    scan_music_folder(None)
-
+    # --- ИНТЕРФЕЙС ---
     page.add(
         ft.Container(height=30),
         ft.Text("Alex Slow Mo Studio", size=26, weight="bold", color="#00d2ff"),
         ft.Divider(height=10, color="transparent"),
 
-        # Управление GoPro
         ft.Container(
             content=ft.Column([
                 ft.Text("Управление GoPro", size=18, weight="bold"),
@@ -260,34 +190,23 @@ def main(page: ft.Page):
                     ft.ElevatedButton("Проверить", on_click=check_connection),
                     rec_btn,
                 ]),
-                ft.ElevatedButton("📥 Скачать видео в Download", on_click=download_last_video)
+                ft.ElevatedButton("📥 Скачать последнее видео", on_click=download_last_video)
             ]),
             padding=15, border_radius=10, bgcolor="#1e1e24"
         ),
 
-        # Поиск видео
         ft.Container(
             content=ft.Column([
-                ft.Text("Выбор видео (Папка Download)", size=18, weight="bold"),
+                ft.Text("Файлы для обработки", size=18, weight="bold"),
                 selected_video_label,
-                video_search_input,
-                video_list_view
-            ]),
-            padding=15, border_radius=10, bgcolor="#1e1e24"
-        ),
-
-        # Поиск музыки
-        ft.Container(
-            content=ft.Column([
-                ft.Text("Выбор музыки (Папка Music)", size=18, weight="bold"),
+                ft.ElevatedButton("📂 Выбрать видео из памяти", on_click=lambda _: video_picker.pick_files(allowed_extensions=["mp4", "mov"])),
+                ft.Divider(height=5, color="transparent"),
                 selected_music_label,
-                music_search_input,
-                music_list_view
+                ft.ElevatedButton("🎵 Выбрать музыку из памяти", on_click=lambda _: music_picker.pick_files(allowed_extensions=["mp3", "wav"])),
             ]),
             padding=15, border_radius=10, bgcolor="#1e1e24"
         ),
 
-        # Настройки скорости и рендера
         ft.Container(
             content=ft.Column([
                 ft.Text("Настройка скорости 5 отрезков", size=18, weight="bold"),
@@ -296,16 +215,10 @@ def main(page: ft.Page):
                 ft.Row([ft.Text("5:"), s5]),
                 ft.Divider(height=10, color="gray"),
                 resolution_dropdown,
-                boomerang_check,
+                ft.Checkbox(label="Эффект Бумеранг (реверс)", value=False),
                 ft.Divider(height=10, color="transparent"),
-                progress_bar,
                 process_status,
-                ft.ElevatedButton(
-                    "Обработать и сохранить", 
-                    bgcolor="#00d2ff", 
-                    color="black",
-                    on_click=start_ffmpeg_process
-                )
+                ft.ElevatedButton("Обработать и сохранить", bgcolor="#00d2ff", color="black", on_click=process_video)
             ]),
             padding=15, border_radius=10, bgcolor="#1e1e24"
         )
