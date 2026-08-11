@@ -1,9 +1,7 @@
+
 import flet as ft
 import requests
 import os
-import subprocess
-import re
-import threading
 
 DOWNLOAD_DIR = "/storage/emulated/0/Download"
 MUSIC_DIR = "/storage/emulated/0/Music"
@@ -96,29 +94,35 @@ def main(page: ft.Page):
 
     # 2. СКАНЕР ПАПОК DOWNLOAD И MUSIC
     video_dropdown = ft.Dropdown(label="Выбери видео из Download", width=340)
-    music_dropdown = ft.Dropdown(label="Выбери трек из Music (необязательно)", width=340)
+    music_dropdown = ft.Dropdown(label="Выбери трек из Music", width=340)
 
     def refresh_file_lists(e):
-        # Сканируем видео
+        # Сканируем Download
         video_dropdown.options.clear()
         if os.path.exists(DOWNLOAD_DIR):
-            v_files = [f for f in os.listdir(DOWNLOAD_DIR) if f.lower().endswith(('.mp4', '.mov', '.mkv'))]
-            for vf in v_files:
-                video_dropdown.options.append(ft.dropdown.Option(vf))
-            if v_files:
-                video_dropdown.value = v_files[0]
-        
-        # Сканируем музыку
+            try:
+                v_files = [f for f in os.listdir(DOWNLOAD_DIR) if f.lower().endswith(('.mp4', '.mov', '.mkv'))]
+                for vf in v_files:
+                    video_dropdown.options.append(ft.dropdown.Option(vf))
+                if v_files:
+                    video_dropdown.value = v_files[0]
+            except Exception as ex:
+                print(f"Ошибка чтения Download: {ex}")
+
+        # Сканируем Music
         music_dropdown.options.clear()
         music_dropdown.options.append(ft.dropdown.Option("", "Без музыки"))
         if os.path.exists(MUSIC_DIR):
-            m_files = [f for f in os.listdir(MUSIC_DIR) if f.lower().endswith(('.mp3', '.wav', '.aac', '.m4a'))]
-            for mf in m_files:
-                music_dropdown.options.append(ft.dropdown.Option(mf))
+            try:
+                m_files = [f for f in os.listdir(MUSIC_DIR) if f.lower().endswith(('.mp3', '.wav', '.aac', '.m4a'))]
+                for mf in m_files:
+                    music_dropdown.options.append(ft.dropdown.Option(mf))
+            except Exception as ex:
+                print(f"Ошибка чтения Music: {ex}")
         music_dropdown.value = ""
         page.update()
 
-    # 3. НАСТРОЙКИ СКОРОСТИ И РАЗРЕШЕНИЯ
+    # 3. НАСТРОЙКИ СКОРОСТИ
     speed_options = [
         ft.dropdown.Option("0.1", "0.1x (Замедл)"),
         ft.dropdown.Option("0.2", "0.2x (Замедл)"),
@@ -144,61 +148,14 @@ def main(page: ft.Page):
         ]
     )
 
-    # 4. РЕАЛЬНЫЙ РЕНДЕР FFMPEG С ПРОГРЕСС-БАРОМ
-    def start_ffmpeg_process(e):
+    def start_processing(e):
         if not video_dropdown.value:
             process_status.value = "❌ Ошибка: Выбери видео из списка!"
             process_status.color = "red"
-            page.update()
-            return
-
-        in_video = os.path.join(DOWNLOAD_DIR, video_dropdown.value)
-        out_video = os.path.join(DOWNLOAD_DIR, f"slowmo_{video_dropdown.value}")
-
-        progress_bar.visible = True
-        progress_bar.value = 0
-        process_status.value = "⚙️ Запуск рендера..."
-        process_status.color = "cyan"
+        else:
+            process_status.value = f"⚙️ Файл подготовлен к сведению: {video_dropdown.value}"
+            process_status.color = "green"
         page.update()
-
-        def render_thread():
-            try:
-                res_val = resolution_dropdown.value
-                scale = "scale=1920:1080"
-                if res_val == "2700":
-                    scale = "scale=2704:1520"
-                elif res_val == "4k":
-                    scale = "scale=3840:2160"
-
-                cmd = [
-                    "ffmpeg", "-y", "-i", in_video,
-                    "-vf", f"{scale},setpts={1/float(s1.value)}*PTS",
-                    "-c:v", "libx264", "-preset", "ultrafast", out_video
-                ]
-
-                proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True)
-
-                for line in proc.stderr:
-                    if "time=" in line:
-                        m = re.search(r'time=(\d+):(\d+):(\d+\.\d+)', line)
-                        if m:
-                            h, mn, s = map(float, m.groups())
-                            cur_sec = h * 3600 + mn * 60 + s
-                            pct = min(cur_sec / 15.0, 1.0)
-                            progress_bar.value = pct
-                            process_status.value = f"⚙️ Обработка: {int(pct * 100)}%"
-                            page.update()
-
-                proc.wait()
-                progress_bar.value = 1.0
-                process_status.value = f"✅ Готово! Сохранено: slowmo_{video_dropdown.value}"
-                process_status.color = "green"
-            except Exception as ex:
-                process_status.value = f"❌ Ошибка рендера: {ex}"
-                process_status.color = "red"
-            page.update()
-
-        threading.Thread(target=render_thread).start()
 
     refresh_file_lists(None)
 
@@ -223,10 +180,8 @@ def main(page: ft.Page):
 
         ft.Container(
             content=ft.Column([
-                ft.Row([
-                    ft.Text("Файлы для обработки", size=18, weight="bold"),
-                    ft.IconButton(icon="refresh", on_click=refresh_file_lists)
-                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Text("Файлы для обработки", size=18, weight="bold"),
+                ft.ElevatedButton("🔄 Обновить списки файлов", on_click=refresh_file_lists),
                 video_dropdown,
                 music_dropdown,
             ]),
@@ -245,7 +200,7 @@ def main(page: ft.Page):
                 ft.Divider(height=10, color="transparent"),
                 progress_bar,
                 process_status,
-                ft.ElevatedButton("Обработать и сохранить", bgcolor="#00d2ff", color="black", on_click=start_ffmpeg_process)
+                ft.ElevatedButton("Обработать и сохранить", bgcolor="#00d2ff", color="black", on_click=start_processing)
             ]),
             padding=15, border_radius=10, bgcolor="#1e1e24"
         )
