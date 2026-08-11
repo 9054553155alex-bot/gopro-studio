@@ -1,5 +1,6 @@
 name: Build APK
 on: [push]
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,10 +26,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flet requests
+          pip install flet requests opencv-python-headless pyjnius
 
       - name: Build APK
-        run: flet build apk
+        run: flet build apk --permissions READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE MANAGE_EXTERNAL_STORAGE
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
