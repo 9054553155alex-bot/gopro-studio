@@ -1,36 +1,12 @@
 import flet as ft
 import requests
 import os
-import platform
-
-def request_android_permissions():
-    """Запрос разрешений на чтение и запись в память для Android"""
-    try:
-        from jnius import autoclass
-        PythonActivity = autoclass('org.kivy.android.PythonActivity')
-        Environment = autoclass('android.os.Environment')
-        Intent = autoclass('android.content.Intent')
-        Settings = autoclass('android.provider.Settings')
-        Uri = autoclass('android.net.Uri')
-
-        # Проверка и запрос доступа ко всей памяти (Android 11+)
-        if not Environment.isExternalStorageManager():
-            activity = PythonActivity.mActivity
-            intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-            uri = Uri.fromParts("package", activity.getPackageName(), None)
-            intent.setData(uri)
-            activity.startActivity(intent)
-    except Exception as e:
-        print(f"Ошибка запроса разрешений: {e}")
 
 def main(page: ft.Page):
     page.title = "Alex Slow Mo Studio"
     page.theme_mode = ft.ThemeMode.DARK
     page.scroll = ft.ScrollMode.AUTO
     page.padding = 20
-
-    # Запрашиваем доступ к памяти при запуске
-    request_android_permissions()
 
     is_recording = False
     selected_video_path = None
@@ -41,7 +17,7 @@ def main(page: ft.Page):
     selected_video_label = ft.Text("Видео не выбрано", color="gray")
     selected_music_label = ft.Text("Музыка не выбрана", color="gray")
 
-    # --- 1. УПРАВЛЕНИЕ GOPRO И СКАЧИВАНИЕ ---
+    # --- 1. GOPRO ---
     def check_connection(e):
         try:
             resp = requests.get("http://10.5.5.9/gp/gpControl", timeout=2)
@@ -120,7 +96,7 @@ def main(page: ft.Page):
 
     rec_btn = ft.ElevatedButton("НАЧАТЬ ЗАПИСЬ", bgcolor="green", color="white", on_click=toggle_record)
 
-    # --- 2. ВЫБОР ФАЙЛОВ ИЗ ПАМЯТИ ---
+    # --- 2. ВЫБОР ФАЙЛОВ ---
     def on_video_selected(e: ft.FilePickerResultEvent):
         nonlocal selected_video_path
         if e.files:
@@ -137,11 +113,16 @@ def main(page: ft.Page):
             selected_music_label.color = "cyan"
             page.update()
 
-    video_picker = ft.FilePicker(on_result=on_video_selected)
-    music_picker = ft.FilePicker(on_result=on_music_selected)
+    # Корректная инициализация без аргументов
+    video_picker = ft.FilePicker()
+    video_picker.on_result = on_video_selected
+
+    music_picker = ft.FilePicker()
+    music_picker.on_result = on_music_selected
+
     page.overlay.extend([video_picker, music_picker])
 
-    # --- 3. НАСТРОЙКИ ОБРАБОТКИ ---
+    # --- 3. НАСТРОЙКИ ---
     speed_options = [
         ft.dropdown.Option("0.1", "0.1x (Замедл)"),
         ft.dropdown.Option("0.2", "0.2x (Замедл)"),
