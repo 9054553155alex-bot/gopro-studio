@@ -2,206 +2,180 @@ import flet as ft
 import requests
 import threading
 import time
-import os
 
 GOPRO_IP = "10.5.5.9"
 
 def main(page: ft.Page):
-    page.title = "SlowMo Control 1.5.50 (GoPro Edition)"
-    page.theme_mode = ft.ThemeMode.LIGHT
-    page.padding = 15
+    page.title = "Alex Slow Mo Studio"
+    page.theme_mode = ft.ThemeMode.DARK
+    page.bgcolor = "#121216"
+    page.padding = 16
     page.scroll = ft.ScrollMode.AUTO
 
-    selected_video = [None]
-    selected_music = [None]
+    # Цветовая палитра
+    CARD_BG = "#1e1e24"
+    INPUT_BG = "#18181c"
+    CYAN_ACCENT = "#28c7fa"
+    GREEN_ACCENT = "#4caf50"
+    BORDER_COLOR = "#33333d"
 
-    status_text = ft.Text("Готов к работе", color="gray", size=13)
-    progress_bar = ft.ProgressBar(value=0, visible=False)
+    status_text = ft.Text("Готов к работе", color="#a0a0a0", size=13)
+    progress_bar = ft.ProgressBar(value=0, visible=False, color=CYAN_ACCENT)
 
-    # 1. ТАЙМЕР ЗАПИСИ
-    slider_time = ft.Slider(min=3, max=15, divisions=12, label="{value} сек", value=5, width=180)
+    # 1. Управление GoPro
+    gopro_status_text = ft.Text("Подключи GoPro к Wi-Fi", color="#ffd54f", size=13)
 
-    def start_timed_recording(e):
-        duration = int(slider_time.value)
-        status_text.value = f"🔴 Запись... ({duration} сек)"
-        status_text.color = "red"
-        page.update()
+    def check_gopro(e):
         def task():
             try:
-                requests.get(f"http://{GOPRO_IP}:8080/gp/gpControl/command/shutter?p=1", timeout=3)
-                time.sleep(duration)
-                requests.get(f"http://{GOPRO_IP}:8080/gp/gpControl/command/shutter?p=0", timeout=3)
-                status_text.value = "✅ Запись завершена!"
-                status_text.color = "green"
-            except Exception as ex:
-                status_text.value = f"❌ Ошибка GoPro: {ex}"
-                status_text.color = "red"
+                res = requests.get(f"http://{GOPRO_IP}:8080/gp/gpControl/status", timeout=3)
+                if res.status_code == 200:
+                    gopro_status_text.value = "✅ Подключено!"
+                    gopro_status_text.color = GREEN_ACCENT
+                else:
+                    gopro_status_text.value = f"⚠️ Ошибка: {res.status_code}"
+                    gopro_status_text.color = "orange"
+            except Exception:
+                gopro_status_text.value = "❌ Не найдена по Wi-Fi"
+                gopro_status_text.color = "red"
             page.update()
         threading.Thread(target=task).start()
 
-    play_btn = ft.Container(
-        content=ft.Text("▶", color="white", size=22, weight="bold"),
-        bgcolor="black",
-        border_radius=10,
-        width=50,
-        height=50,
-        on_click=start_timed_recording
-    )
-
-    # 2. ДИАЛОГИ ВЫБОРА ФАЙЛОВ ANDROID
-    def on_video_picked(e):
-        if e.files and len(e.files) > 0:
-            selected_video[0] = e.files[0].path
-            btn_choose_video.text = f"✅ {e.files[0].name}"
-            status_text.value = f"Загружено: {e.files[0].name}"
-            status_text.color = "green"
+    def start_recording(e):
+        def task():
+            try:
+                requests.get(f"http://{GOPRO_IP}:8080/gp/gpControl/command/shutter?p=1", timeout=3)
+                gopro_status_text.value = "🔴 Запись началась..."
+                gopro_status_text.color = "red"
+            except Exception as ex:
+                gopro_status_text.value = f"❌ Ошибка записи: {ex}"
+                gopro_status_text.color = "red"
             page.update()
+        threading.Thread(target=task).start()
 
-    def on_music_picked(e):
-        if e.files and len(e.files) > 0:
-            selected_music[0] = e.files[0].path
-            btn_choose_music.text = f"🎵 {e.files[0].name}"
-            status_text.value = f"Загружен трек: {e.files[0].name}"
-            status_text.color = "green"
-            page.update()
-
-    video_picker = ft.FilePicker()
-    video_picker.on_result = on_video_picked
-
-    music_picker = ft.FilePicker()
-    music_picker.on_result = on_music_picked
-
-    page.overlay.extend([video_picker, music_picker])
-
-    # 3. КНОПКИ
-    btn_choose_video = ft.ElevatedButton(
-        "Выбрать видео", 
-        bgcolor="red", 
-        color="white", 
-        on_click=lambda _: video_picker.pick_files(file_type=ft.FilePickerFileType.VIDEO)
-    )
-    
-    btn_choose_music = ft.ElevatedButton(
-        "Выбрать музыку", 
-        bgcolor="red", 
-        color="white", 
-        on_click=lambda _: music_picker.pick_files(file_type=ft.FilePickerFileType.AUDIO)
+    card_gopro = ft.Container(
+        content=ft.Column([
+            ft.Text("Управление GoPro", weight="bold", size=16),
+            gopro_status_text,
+            ft.Row([
+                ft.OutlinedButton("Проверить", on_click=check_gopro, style=ft.ButtonStyle(color="white")),
+                ft.ElevatedButton("НАЧАТЬ ЗАПИСЬ", bgcolor=GREEN_ACCENT, color="white", on_click=start_recording),
+            ], spacing=10),
+            ft.TextButton("📥 Скачать последнее видео", style=ft.ButtonStyle(color="#90caf9")),
+        ]),
+        bgcolor=CARD_BG,
+        padding=16,
+        border_radius=12,
     )
 
-    btn_convert = ft.ElevatedButton(
-        "🎬 Конвертировать", 
-        bgcolor="red", 
-        color="white"
+    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ (С изменениями)
+    video_dd = ft.Dropdown(
+        label="Выбери видео из Download",
+        bgcolor=INPUT_BG,
+        border_color=BORDER_COLOR,
+        border_radius=8,
+        options=[ft.dropdown.Option("video1.mp4", "video1.mp4")]
     )
 
-    # 4. 5 ОТРЕЗКОВ СКОРОСТЕЙ (от 0.1x до 5.0x)
+    music_dd = ft.Dropdown(
+        label="Выбери трек из Music",
+        value="no_music",
+        bgcolor=INPUT_BG,
+        border_color=BORDER_COLOR,
+        border_radius=8,
+        options=[ft.dropdown.Option("no_music", "Без музыки")]
+    )
+
+    card_files = ft.Container(
+        content=ft.Column([
+            ft.Text("Файлы для обработки", weight="bold", size=16),
+            ft.Container(height=5),
+            video_dd,
+            ft.Container(height=12),  # Расстояние между выпадающими списками
+            music_dd,
+        ], spacing=0),
+        bgcolor=CARD_BG,
+        padding=16,
+        border_radius=12,
+    )
+
+    # 3. Настройка скорости 5 отрезков
     speed_options = [
-        ft.dropdown.Option("0.1", "0.1x"),
-        ft.dropdown.Option("0.2", "0.2x"),
-        ft.dropdown.Option("0.5", "0.5x"),
-        ft.dropdown.Option("1.0", "1.0x"),
-        ft.dropdown.Option("2.0", "2.0x"),
-        ft.dropdown.Option("3.0", "3.0x"),
-        ft.dropdown.Option("4.0", "4.0x"),
-        ft.dropdown.Option("5.0", "5.0x"),
+        ft.dropdown.Option("0.1", "0.1x (Замедл.)"),
+        ft.dropdown.Option("0.2", "0.2x (Замедл.)"),
+        ft.dropdown.Option("0.5", "0.5x (Замедл.)"),
+        ft.dropdown.Option("1.0", "1.0x (Обычн.)"),
+        ft.dropdown.Option("2.0", "2.0x (Ускор.)"),
     ]
 
-    def create_compact_dropdown():
+    def make_speed_dropdown(default_val):
         return ft.Dropdown(
-            width=70,
-            height=40,
-            value="1.0",
+            value=default_val,
             options=speed_options,
-            color="black",
-            text_size=11
+            bgcolor=INPUT_BG,
+            border_color=BORDER_COLOR,
+            border_radius=8,
+            content_padding=8,
+            expand=True
         )
 
-    s1, s2, s3, s4, s5 = [create_compact_dropdown() for _ in range(5)]
+    s1 = make_speed_dropdown("0.2")
+    s2 = make_speed_dropdown("1.0")
+    s3 = make_speed_dropdown("0.1")
+    s4 = make_speed_dropdown("2.0")
+    s5 = make_speed_dropdown("0.5")
 
-    # 5. КАЧЕСТВО И FPS
     res_dropdown = ft.Dropdown(
-        width=160, value="1920x1080",
+        label="Разрешение",
+        value="1080p",
+        bgcolor=INPUT_BG,
+        border_color=BORDER_COLOR,
+        border_radius=8,
         options=[
-            ft.dropdown.Option("1920x1080", "1920x1080"),
-            ft.dropdown.Option("2704x1520", "2.7K"),
-            ft.dropdown.Option("3840x2160", "4K"),
+            ft.dropdown.Option("1080p", "1080p (1920x1080)"),
+            ft.dropdown.Option("2.7k", "2.7K (2704x1520)"),
+            ft.dropdown.Option("4k", "4K (3840x2160)"),
         ]
     )
 
-    fps_dropdown = ft.Dropdown(
-        width=160, value="60",
-        options=[
-            ft.dropdown.Option("30", "30 FPS"),
-            ft.dropdown.Option("60", "60 FPS"),
-            ft.dropdown.Option("120", "120 FPS"),
-        ]
+    cb_boomerang = ft.Checkbox(label="Эффект Бумеранг (реверс)", value=False)
+
+    btn_process = ft.ElevatedButton(
+        "Обработать и сохранить",
+        bgcolor=CYAN_ACCENT,
+        color="black",
+        weight="bold",
+        height=45,
+        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=20))
     )
 
-    switch_parts = ft.Switch(value=True, label="Разбивать по частям")
-    switch_boomerang = ft.Switch(value=False, label="🔁 Эффект Бумеранг")
-    switch_wifi = ft.Switch(value=False, label="Включить Wi-Fi")
+    card_settings = ft.Container(
+        content=ft.Column([
+            ft.Text("Настройка скорости 5 отрезков", weight="bold", size=16),
+            ft.Row([ft.Text("1:", color="gray"), s1, ft.Text("2:", color="gray"), s2], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Row([ft.Text("3:", color="gray"), s3, ft.Text("4:", color="gray"), s4], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Row([ft.Text("5:", color="gray"), s5, ft.Container(expand=True)], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Divider(color=BORDER_COLOR, height=20),
+            res_dropdown,
+            cb_boomerang,
+            ft.Container(height=10),
+            status_text,
+            btn_process,
+        ], spacing=10),
+        bgcolor=CARD_BG,
+        padding=16,
+        border_radius=12,
+    )
 
-    def connect_gopro(e):
-        try:
-            res = requests.get(f"http://{GOPRO_IP}:8080/gp/gpControl/status", timeout=3)
-            if res.status_code == 200:
-                status_text.value = "✅ GoPro успешно подключена!"
-                status_text.color = "green"
-            else:
-                status_text.value = f"⚠️ Ошибка ответа: {res.status_code}"
-                status_text.color = "orange"
-        except Exception:
-            status_text.value = "❌ GoPro не найдена по Wi-Fi"
-            status_text.color = "red"
-        page.update()
-
-    # 6. СБОРКА ИНТЕРФЕЙСА
-    left_column = ft.Column([
-        ft.Row([
-            play_btn,
-            ft.Column([
-                ft.Text("Время записи камеры (сек)", size=12, color="gray"),
-                slider_time
-            ])
-        ]),
-        ft.Container(height=160, bgcolor="black", border_radius=8),
-        ft.Text("Музыка", size=12, color="gray"),
-        ft.Slider(min=0, max=100, value=50, active_color="red"),
-        btn_choose_music,
-        ft.Divider(height=10),
-        switch_parts,
-        switch_boomerang,
-        ft.Row([s1, s2, s3, s4, s5], spacing=3),
-        ft.Divider(height=10),
-        btn_choose_video,
-        btn_convert,
-    ], expand=6)
-
-    right_column = ft.Column([
-        ft.Text("Настройка камеры", weight="bold"),
-        ft.Divider(height=10),
-        ft.Text("Подключение GoPro", weight="bold", size=13),
-        switch_wifi,
-        ft.ElevatedButton("Подключить GoPro", on_click=connect_gopro),
-        ft.Divider(height=15),
-        ft.Container(
-            content=ft.Column([
-                ft.Text("Качество", weight="bold", size=13),
-                ft.Text("Разрешение:", size=12),
-                res_dropdown,
-                ft.Text("FPS:", size=12),
-                fps_dropdown,
-            ]),
-            padding=10,
-            border_radius=8
-        )
-    ], expand=4)
+    # Заголовок приложения
+    header = ft.Text("Alex Slow Mo Studio", size=22, weight="bold", color=CYAN_ACCENT)
 
     page.add(
-        ft.Row([left_column, ft.VerticalDivider(width=10), right_column], vertical_alignment=ft.CrossAxisAlignment.START),
-        ft.Divider(),
-        progress_bar,
-        status_text
+        header,
+        card_gopro,
+        card_files,
+        card_settings,
+        progress_bar
     )
 
 ft.app(target=main)
