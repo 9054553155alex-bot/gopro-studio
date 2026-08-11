@@ -9,15 +9,12 @@ def main(page: ft.Page):
     page.padding = 20
 
     is_recording = False
-    selected_video_path = None
-    selected_music_path = None
+    download_dir = "/storage/emulated/0/Download"
 
     status_text = ft.Text("Подключи GoPro к Wi-Fi", color="yellow", size=15)
     process_status = ft.Text("Готов к работе", color="gray", size=14)
-    selected_video_label = ft.Text("Видео не выбрано", color="gray")
-    selected_music_label = ft.Text("Музыка не выбрана", color="gray")
 
-    # --- 1. GOPRO ---
+    # 1. GOPRO: СТАП/СТОП И СКАЧИВАНИЕ
     def check_connection(e):
         try:
             resp = requests.get("http://10.5.5.9/gp/gpControl", timeout=2)
@@ -72,7 +69,6 @@ def main(page: ft.Page):
                 process_status.value = f"📥 Скачивание {last_file}..."
                 page.update()
                 
-                download_dir = "/storage/emulated/0/Download"
                 if not os.path.exists(download_dir):
                     os.makedirs(download_dir, exist_ok=True)
 
@@ -81,11 +77,8 @@ def main(page: ft.Page):
                 with open(save_path, 'wb') as f:
                     f.write(r.content)
                     
-                nonlocal selected_video_path
-                selected_video_path = save_path
-                selected_video_label.value = f"📹 Скачано: {last_file}"
-                selected_video_label.color = "cyan"
-                process_status.value = f"✅ Сохранено в Download/{last_file}"
+                video_input.value = last_file
+                process_status.value = f"✅ Скачано в Download/{last_file}"
                 process_status.color = "green"
             else:
                 process_status.value = "⚠️ Ошибка HTTP от GoPro"
@@ -96,33 +89,11 @@ def main(page: ft.Page):
 
     rec_btn = ft.ElevatedButton("НАЧАТЬ ЗАПИСЬ", bgcolor="green", color="white", on_click=toggle_record)
 
-    # --- 2. ВЫБОР ФАЙЛОВ ---
-    def on_video_selected(e: ft.FilePickerResultEvent):
-        nonlocal selected_video_path
-        if e.files:
-            selected_video_path = e.files[0].path
-            selected_video_label.value = f"📹 Видео: {e.files[0].name}"
-            selected_video_label.color = "cyan"
-            page.update()
+    # 2. ФАЙЛЫ
+    video_input = ft.TextField(label="Имя видеофайла (в папке Download)", value="input.mp4")
+    music_input = ft.TextField(label="Имя музыки (в папке Music, необязательно)", value="")
 
-    def on_music_selected(e: ft.FilePickerResultEvent):
-        nonlocal selected_music_path
-        if e.files:
-            selected_music_path = e.files[0].path
-            selected_music_label.value = f"🎵 Музыка: {e.files[0].name}"
-            selected_music_label.color = "cyan"
-            page.update()
-
-    # Корректная инициализация без аргументов
-    video_picker = ft.FilePicker()
-    video_picker.on_result = on_video_selected
-
-    music_picker = ft.FilePicker()
-    music_picker.on_result = on_music_selected
-
-    page.overlay.extend([video_picker, music_picker])
-
-    # --- 3. НАСТРОЙКИ ---
+    # 3. НАСТРОЙКИ ОБРАБОТКИ
     speed_options = [
         ft.dropdown.Option("0.1", "0.1x (Замедл)"),
         ft.dropdown.Option("0.2", "0.2x (Замедл)"),
@@ -149,15 +120,17 @@ def main(page: ft.Page):
     )
 
     def process_video(e):
-        if not selected_video_path:
-            process_status.value = "❌ Сначала выберите или скачайте видео!"
+        filename = video_input.value.strip()
+        if not filename:
+            process_status.value = "❌ Введите имя видеофайла!"
             process_status.color = "red"
         else:
-            process_status.value = "⚙️ Обработка запускается..."
+            full_path = os.path.join(download_dir, filename)
+            process_status.value = f"⚙️ Файл подготовлен: {full_path}"
             process_status.color = "cyan"
         page.update()
 
-    # --- ИНТЕРФЕЙС ---
+    # ИНТЕРФЕЙС
     page.add(
         ft.Container(height=30),
         ft.Text("Alex Slow Mo Studio", size=26, weight="bold", color="#00d2ff"),
@@ -179,11 +152,8 @@ def main(page: ft.Page):
         ft.Container(
             content=ft.Column([
                 ft.Text("Файлы для обработки", size=18, weight="bold"),
-                selected_video_label,
-                ft.ElevatedButton("📂 Выбрать видео из памяти", on_click=lambda _: video_picker.pick_files(allowed_extensions=["mp4", "mov"])),
-                ft.Divider(height=5, color="transparent"),
-                selected_music_label,
-                ft.ElevatedButton("🎵 Выбрать музыку из памяти", on_click=lambda _: music_picker.pick_files(allowed_extensions=["mp3", "wav"])),
+                video_input,
+                music_input,
             ]),
             padding=15, border_radius=10, bgcolor="#1e1e24"
         ),
