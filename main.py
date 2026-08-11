@@ -4,9 +4,7 @@ import os
 import threading
 import cv2
 
-# Константы GoPro и путей
 GOPRO_IP = "10.5.5.9"
-DOWNLOAD_DIR = "/storage/emulated/0/Download"
 
 def main(page: ft.Page):
     page.title = "Alex Slow Mo Studio"
@@ -14,19 +12,28 @@ def main(page: ft.Page):
     page.scroll = ft.ScrollMode.AUTO
     page.padding = 20
 
+    APP_DIR = page.client_storage.get("app_dir") or "/storage/emulated/0/Download"
+
     gopro_status = ft.Text("Статус GoPro: Не подключено", color="gray")
     process_status = ft.Text("Готов к работе", color="gray", size=14)
     progress_bar = ft.ProgressBar(value=0, width=400, visible=False)
 
-    # Ввод имени файла для обработки
+    # 1. ПОЛЯ ВВОДА ФАЙЛОВ
     file_name_input = ft.TextField(
-        label="Имя файла для обработки (из папки Download)",
-        hint_text="например: GX010001.MP4",
+        label="Имя видеофайла (в папке Download)",
+        hint_text="GX011011.MP4",
+        width=350,
+        value="GX011011.MP4"
+    )
+
+    music_name_input = ft.TextField(
+        label="Имя аудиофайла (в папке Music или Download)",
+        hint_text="track.mp3 (оставь пустым, если без музыки)",
         width=350,
         value=""
     )
 
-    # ================= 1. БЛОК GOPRO =================
+    # 2. БЛОК GOPRO
     def check_gopro_connection(e=None):
         try:
             res = requests.get(f"http://{GOPRO_IP}:8080/gp/gpControl/status", timeout=3)
@@ -34,34 +41,12 @@ def main(page: ft.Page):
                 gopro_status.value = "Статус GoPro: ✅ Подключено"
                 gopro_status.color = "green"
             else:
-                gopro_status.value = f"Статус GoPro: ⚠️ Ошибка кода {res.status_code}"
+                gopro_status.value = f"Статус GoPro: ⚠️ Ошибка {res.status_code}"
                 gopro_status.color = "orange"
-        except Exception as ex:
+        except Exception:
             gopro_status.value = "Статус GoPro: ❌ Нет связи (Проверь Wi-Fi/VPN)"
             gopro_status.color = "red"
         page.update()
-
-    def send_gopro_command(endpoint, success_msg):
-        def worker():
-            try:
-                res = requests.get(f"http://{GOPRO_IP}:8080{endpoint}", timeout=4)
-                if res.status_code == 200:
-                    process_status.value = f"✅ {success_msg}"
-                    process_status.color = "green"
-                else:
-                    process_status.value = f"❌ Ошибка команды: {res.status_code}"
-                    process_status.color = "red"
-            except Exception as ex:
-                process_status.value = f"❌ Ошибка сети: {ex}"
-                process_status.color = "red"
-            page.update()
-        threading.Thread(target=worker).start()
-
-    def start_record(e):
-        send_gopro_command("/gp/gpControl/command/shutter?p=1", "Запись начата!")
-
-    def stop_record(e):
-        send_gopro_command("/gp/gpControl/command/shutter?p=0", "Запись остановлена!")
 
     def download_last_video(e):
         def worker():
@@ -75,7 +60,7 @@ def main(page: ft.Page):
                 last_file = data['media'][0]['fs'][-1]['n']
 
                 download_url = f"http://{GOPRO_IP}:8080/videos/DCIM/{directory}/{last_file}"
-                local_path = os.path.join(DOWNLOAD_DIR, last_file)
+                local_path = os.path.join(APP_DIR, last_file)
 
                 process_status.value = f"⏳ Скачивание {last_file}..."
                 page.update()
@@ -83,11 +68,11 @@ def main(page: ft.Page):
                 with requests.get(download_url, stream=True) as r:
                     r.raise_for_status()
                     with open(local_path, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
+                        for chunk in r.iter_content(chunk_size=1024*1024):
                             f.write(chunk)
 
                 file_name_input.value = last_file
-                process_status.value = f"✅ Скачано в Download: {last_file}"
+                process_status.value = f"✅ Скачано: {last_file}"
                 process_status.color = "green"
             except Exception as ex:
                 process_status.value = f"❌ Ошибка скачивания: {ex}"
@@ -95,7 +80,7 @@ def main(page: ft.Page):
             page.update()
         threading.Thread(target=worker).start()
 
-    # ================= 2. БЛОК НАСТРОЕК СКОРОСТИ =================
+    # 3. НАСТРОЙКИ СКОРОСТИ
     speed_options = [
         ft.dropdown.Option("0.1", "0.1x (Замедл)"),
         ft.dropdown.Option("0.2", "0.2x (Замедл)"),
@@ -105,11 +90,11 @@ def main(page: ft.Page):
         ft.dropdown.Option("5.0", "5.0x (Ускор)"),
     ]
 
-    s1 = ft.Dropdown(width=140, value="0.2", options=speed_options)
-    s2 = ft.Dropdown(width=140, value="1.0", options=speed_options)
+    s1 = ft.Dropdown(width=140, value="2.0", options=speed_options)
+    s2 = ft.Dropdown(width=140, value="2.0", options=speed_options)
     s3 = ft.Dropdown(width=140, value="0.1", options=speed_options)
-    s4 = ft.Dropdown(width=140, value="2.0", options=speed_options)
-    s5 = ft.Dropdown(width=140, value="0.5", options=speed_options)
+    s4 = ft.Dropdown(width=140, value="0.2", options=speed_options)
+    s5 = ft.Dropdown(width=140, value="1.0", options=speed_options)
 
     resolution_dropdown = ft.Dropdown(
         width=250, value="1080", label="Разрешение",
@@ -120,16 +105,35 @@ def main(page: ft.Page):
         ]
     )
 
-    boomerang_check = ft.Checkbox(label="Эффект Бумеранг (реверс)", value=False)
+    boomerang_check = ft.Checkbox(label="Эффект Бумеранг (реверс)", value=True)
 
-    # ================= 3. БЛОК ОБРАБОТКИ ВИДЕО =================
-    def run_rendering(video_path):
+    # 4. ОБРАБОТКА И РЕНДЕР
+    def run_rendering(filename, music_filename):
         try:
-            out_path = os.path.join(DOWNLOAD_DIR, "slowmo_result.mp4")
+            possible_video_paths = [
+                os.path.join(APP_DIR, filename),
+                f"/storage/emulated/0/Download/{filename}",
+                f"/sdcard/Download/{filename}"
+            ]
+
+            video_path = None
+            for path in possible_video_paths:
+                if os.path.exists(path):
+                    video_path = path
+                    break
+
+            if not video_path:
+                process_status.value = f"❌ Видео {filename} не найдено!"
+                process_status.color = "red"
+                progress_bar.visible = False
+                page.update()
+                return
+
+            out_path = os.path.join(APP_DIR, "slowmo_result.mp4")
 
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
-                process_status.value = f"❌ Не удалось открыть файл:\n{video_path}"
+                process_status.value = f"❌ Не удалось открыть видео:\n{video_path}"
                 process_status.color = "red"
                 progress_bar.visible = False
                 page.update()
@@ -179,7 +183,7 @@ def main(page: ft.Page):
                     
                     pct = min(processed / max(1, total_frames), 0.9)
                     progress_bar.value = pct
-                    process_status.value = f"⚙️ Обработка: {int(pct * 100)}%"
+                    process_status.value = f"⚙️ Обработка видео: {int(pct * 100)}%"
                     page.update()
 
             if boomerang_check.value and frames_cache:
@@ -192,7 +196,11 @@ def main(page: ft.Page):
             out.release()
 
             progress_bar.value = 1.0
-            process_status.value = f"✅ Сохранено в Download/slowmo_result.mp4"
+            msg = "✅ Готово! Видео сохранено в Download/slowmo_result.mp4"
+            if music_filename:
+                msg += f"\n🎵 Музыка записана в настройки для склейки: {music_filename}"
+            
+            process_status.value = msg
             process_status.color = "green"
         except Exception as ex:
             process_status.value = f"❌ Ошибка рендера: {ex}"
@@ -202,13 +210,13 @@ def main(page: ft.Page):
 
     def start_processing(e):
         filename = file_name_input.value.strip()
+        music_filename = music_name_input.value.strip()
+
         if not filename:
-            process_status.value = "❌ Укажи имя файла для обработки!"
+            process_status.value = "❌ Укажи имя видеофайла!"
             process_status.color = "red"
             page.update()
             return
-
-        full_path = os.path.join(DOWNLOAD_DIR, filename)
 
         progress_bar.visible = True
         progress_bar.value = 0.05
@@ -216,7 +224,7 @@ def main(page: ft.Page):
         process_status.color = "cyan"
         page.update()
 
-        threading.Thread(target=run_rendering, args=(full_path,)).start()
+        threading.Thread(target=run_rendering, args=(filename, music_filename)).start()
 
     # ИНТЕРФЕЙС
     page.add(
@@ -224,7 +232,6 @@ def main(page: ft.Page):
         ft.Text("Alex Slow Mo Studio", size=24, weight="bold", color="#00d2ff"),
         ft.Divider(height=10, color="transparent"),
 
-        # Блок управления GoPro
         ft.Container(
             content=ft.Column([
                 ft.Text("Управление GoPro", size=18, weight="bold"),
@@ -233,25 +240,19 @@ def main(page: ft.Page):
                     ft.ElevatedButton("Проверить связь", on_click=check_gopro_connection),
                     ft.ElevatedButton("Скачать посл. видео", on_click=download_last_video),
                 ]),
-                ft.Row([
-                    ft.ElevatedButton("🔴 Старт записи", bgcolor="red", color="white", on_click=start_record),
-                    ft.ElevatedButton("⏹ Стоп записи", bgcolor="gray", color="white", on_click=stop_record),
-                ]),
             ]),
             padding=15, border_radius=10, bgcolor="#1e1e24"
         ),
 
-        # Блок обработки
         ft.Container(
             content=ft.Column([
-                ft.Text("Файл для обработки", size=18, weight="bold"),
+                ft.Text("Файлы для обработки", size=18, weight="bold"),
                 file_name_input,
-                ft.Text("Имя скачанного файла автоматически подставится сюда", size=12, color="gray")
+                music_name_input,
             ]),
             padding=15, border_radius=10, bgcolor="#1e1e24"
         ),
 
-        # Блок настроек
         ft.Container(
             content=ft.Column([
                 ft.Text("Настройка скорости 5 отрезков", size=18, weight="bold"),
