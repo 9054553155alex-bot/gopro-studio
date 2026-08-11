@@ -1,5 +1,4 @@
 import flet as ft
-import requests
 import os
 import threading
 import cv2
@@ -20,14 +19,14 @@ def main(page: ft.Page):
     video_label = ft.Text("Видео не выбрано", color="orange")
     music_label = ft.Text("Музыка не выбрана (без музыки)", color="gray")
 
-    # 1. НАТИВНЫЙ ВЫБОР ФАЙЛОВ (FILE PICKER)
+    # 1. НАТИВНЫЙ ВЫБОР ФАЙЛОВ (Исправленный синтаксис Flet)
     def on_video_selected(e: ft.FilePickerResultEvent):
         nonlocal selected_video_path
         if e.files:
             selected_video_path = e.files[0].path
             video_label.value = f"✅ Видео: {e.files[0].name}"
             video_label.color = "green"
-        page.update()
+            page.update()
 
     def on_music_selected(e: ft.FilePickerResultEvent):
         nonlocal selected_music_path
@@ -35,11 +34,17 @@ def main(page: ft.Page):
             selected_music_path = e.files[0].path
             music_label.value = f"🎵 Трек: {e.files[0].name}"
             music_label.color = "green"
-        page.update()
+            page.update()
 
-    video_picker = ft.FilePicker(on_result=on_video_selected)
-    music_picker = ft.FilePicker(on_result=on_music_selected)
-    page.overlay.extend([video_picker, music_picker])
+    # Создание компонентов FilePicker без параметров в __init__
+    video_picker = ft.FilePicker()
+    video_picker.on_result = on_video_selected
+
+    music_picker = ft.FilePicker()
+    music_picker.on_result = on_music_selected
+
+    page.overlay.append(video_picker)
+    page.overlay.append(music_picker)
 
     # 2. НАСТРОЙКИ СКОРОСТИ И РАЗРЕШЕНИЯ
     speed_options = [
