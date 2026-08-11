@@ -1,11 +1,8 @@
 import flet as ft
 import requests
 import os
-import cv2
 import threading
-
-DOWNLOAD_DIR = "/storage/emulated/0/Download"
-MUSIC_DIR = "/storage/emulated/0/Music"
+import cv2
 
 def main(page: ft.Page):
     page.title = "Alex Slow Mo Studio"
@@ -13,122 +10,38 @@ def main(page: ft.Page):
     page.scroll = ft.ScrollMode.AUTO
     page.padding = 20
 
-    is_recording = False
-    status_text = ft.Text("Подключи GoPro к Wi-Fi", color="yellow", size=15)
     process_status = ft.Text("Готов к работе", color="gray", size=14)
     progress_bar = ft.ProgressBar(value=0, width=400, visible=False)
 
-    # 1. GOPRO: СТАРТ/СТОП И СКАЧИВАНИЕ
-    def check_connection(e):
-        try:
-            resp = requests.get("http://10.5.5.9/gp/gpControl", timeout=2)
-            status_text.value = "✅ Камера готова!" if resp.status_code == 200 else "⚠️ Ошибка подключения"
-            status_text.color = "green" if resp.status_code == 200 else "orange"
-        except:
-            status_text.value = "❌ Нет связи с GoPro"
-            status_text.color = "red"
+    # Пути выбранных файлов
+    selected_video_path = None
+    selected_music_path = None
+
+    video_label = ft.Text("Видео не выбрано", color="orange")
+    music_label = ft.Text("Музыка не выбрана (без музыки)", color="gray")
+
+    # 1. НАТИВНЫЙ ВЫБОР ФАЙЛОВ (FILE PICKER)
+    def on_video_selected(e: ft.FilePickerResultEvent):
+        nonlocal selected_video_path
+        if e.files:
+            selected_video_path = e.files[0].path
+            video_label.value = f"✅ Видео: {e.files[0].name}"
+            video_label.color = "green"
         page.update()
 
-    def toggle_record(e):
-        nonlocal is_recording
-        try:
-            cmd = "1" if not is_recording else "0"
-            resp = requests.get(f"http://10.5.5.9/gp/gpControl/command/shutter?p={cmd}", timeout=2)
-            if resp.status_code == 200:
-                is_recording = not is_recording
-                rec_btn.text = "СТОП ЗАПИСЬ" if is_recording else "НАЧАТЬ ЗАПИСЬ"
-                rec_btn.bgcolor = "red" if is_recording else "green"
-                status_text.value = "🔴 ИДЕТ ЗАПИСЬ..." if is_recording else "⏹ Запись остановлена"
-                status_text.color = "red" if is_recording else "white"
-        except:
-            status_text.value = "❌ Нет связи с GoPro"
-            status_text.color = "red"
+    def on_music_selected(e: ft.FilePickerResultEvent):
+        nonlocal selected_music_path
+        if e.files:
+            selected_music_path = e.files[0].path
+            music_label.value = f"🎵 Трек: {e.files[0].name}"
+            music_label.color = "green"
         page.update()
 
-    def download_last_video(e):
-        process_status.value = "⏳ Запрос списка файлов..."
-        process_status.color = "yellow"
-        page.update()
-        try:
-            media_resp = requests.get("http://10.5.5.9:8080/gp/gpMediaList", timeout=4)
-            if media_resp.status_code == 200:
-                data = media_resp.json()
-                media_list = data.get('media', [])
-                if not media_list:
-                    process_status.value = "⚠️ Карта памяти пуста"
-                    page.update()
-                    return
-                
-                last_folder_data = media_list[-1]
-                folder_name = last_folder_data.get('directory', last_folder_data.get('d', '100GOPRO'))
-                files_list = last_folder_data.get('fs', [])
-                if not files_list:
-                    process_status.value = "⚠️ Файлы не найдены"
-                    page.update()
-                    return
-                
-                last_file = files_list[-1].get('n', files_list[-1].get('name'))
-                file_url = f"http://10.5.5.9:8080/videos/DCIM/{folder_name}/{last_file}"
-                
-                process_status.value = f"📥 Скачивание {last_file}..."
-                page.update()
-                
-                if not os.path.exists(DOWNLOAD_DIR):
-                    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    video_picker = ft.FilePicker(on_result=on_video_selected)
+    music_picker = ft.FilePicker(on_result=on_music_selected)
+    page.overlay.extend([video_picker, music_picker])
 
-                save_path = os.path.join(DOWNLOAD_DIR, last_file)
-                r = requests.get(file_url, timeout=60)
-                with open(save_path, 'wb') as f:
-                    f.write(r.content)
-                    
-                process_status.value = f"✅ Скачано в Download/{last_file}"
-                process_status.color = "green"
-                refresh_file_lists(None)
-            else:
-                process_status.value = "⚠️ Ошибка HTTP от GoPro"
-        except Exception as err:
-            process_status.value = f"❌ Ошибка скачивания: {err}"
-            process_status.color = "red"
-        page.update()
-
-    rec_btn = ft.ElevatedButton("НАЧАТЬ ЗАПИСЬ", bgcolor="green", color="white", on_click=toggle_record)
-
-    # 2. СКАНЕР ПАПОК DOWNLOAD И MUSIC
-    video_dropdown = ft.Dropdown(label="Выбери видео из Download", width=340)
-    music_dropdown = ft.Dropdown(label="Выбери трек из Music", width=340)
-
-    def refresh_file_lists(e):
-        video_dropdown.options.clear()
-        if os.path.exists(DOWNLOAD_DIR):
-            try:
-                v_files = [f for f in os.listdir(DOWNLOAD_DIR) if f.lower().endswith(('.mp4', '.mov', '.mkv'))]
-                for vf in v_files:
-                    video_dropdown.options.append(ft.dropdown.Option(vf))
-                if v_files:
-                    video_dropdown.value = v_files[0]
-            except Exception as ex:
-                print(f"Ошибка чтения Download: {ex}")
-
-        music_dropdown.options.clear()
-        music_dropdown.options.append(ft.dropdown.Option("NONE", "Без музыки"))
-        if not os.path.exists(MUSIC_DIR):
-            try:
-                os.makedirs(MUSIC_DIR, exist_ok=True)
-            except:
-                pass
-
-        if os.path.exists(MUSIC_DIR):
-            try:
-                m_files = [f for f in os.listdir(MUSIC_DIR) if f.lower().endswith(('.mp3', '.wav', '.aac', '.m4a'))]
-                for mf in m_files:
-                    music_dropdown.options.append(ft.dropdown.Option(mf))
-            except Exception as ex:
-                print(f"Ошибка чтения Music: {ex}")
-                
-        music_dropdown.value = "NONE"
-        page.update()
-
-    # 3. НАСТРОЙКИ СКОРОСТИ И РАЗРЕШЕНИЯ
+    # 2. НАСТРОЙКИ СКОРОСТИ И РАЗРЕШЕНИЯ
     speed_options = [
         ft.dropdown.Option("0.1", "0.1x (Замедл)"),
         ft.dropdown.Option("0.2", "0.2x (Замедл)"),
@@ -136,7 +49,6 @@ def main(page: ft.Page):
         ft.dropdown.Option("1.0", "1.0x (Обычн)"),
         ft.dropdown.Option("2.0", "2.0x (Ускор)"),
         ft.dropdown.Option("5.0", "5.0x (Ускор)"),
-        ft.dropdown.Option("7.0", "7.0x (Ускор)"),
     ]
 
     s1 = ft.Dropdown(width=140, value="0.2", options=speed_options)
@@ -156,13 +68,23 @@ def main(page: ft.Page):
 
     boomerang_check = ft.Checkbox(label="Эффект Бумеранг (реверс)", value=False)
 
-    # 4. ОБРАБОТКА КАДРОВ ЧЕРЕЗ OPENCV
+    # 3. ОБРАБОТКА ВИДЕО ЧЕРЕЗ OPENCV
     def run_rendering():
         try:
-            in_path = os.path.join(DOWNLOAD_DIR, video_dropdown.value)
-            out_path = os.path.join(DOWNLOAD_DIR, f"slowmo_{video_dropdown.value}")
+            out_dir = "/storage/emulated/0/Download"
+            if not os.path.exists(out_dir):
+                out_dir = os.path.dirname(selected_video_path)
+                
+            out_path = os.path.join(out_dir, "slowmo_result.mp4")
 
-            cap = cv2.VideoCapture(in_path)
+            cap = cv2.VideoCapture(selected_video_path)
+            if not cap.isOpened():
+                process_status.value = "❌ Ошибка: Не удалось открыть файл!"
+                process_status.color = "red"
+                progress_bar.visible = False
+                page.update()
+                return
+
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
 
@@ -177,7 +99,7 @@ def main(page: ft.Page):
             out = cv2.VideoWriter(out_path, fourcc, fps, (target_w, target_h))
 
             speeds = [float(s1.value), float(s2.value), float(s3.value), float(s4.value), float(s5.value)]
-            seg_frames = total_frames // 5
+            seg_frames = max(1, total_frames // 5)
             
             processed = 0
             frames_cache = []
@@ -188,8 +110,6 @@ def main(page: ft.Page):
                 
                 start_f = seg_idx * seg_frames
                 end_f = (seg_idx + 1) * seg_frames if seg_idx < 4 else total_frames
-                
-                cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
                 
                 curr = float(start_f)
                 while curr < end_f:
@@ -207,13 +127,13 @@ def main(page: ft.Page):
                     curr += step
                     processed += 1
                     
-                    pct = min(processed / total_frames, 0.9)
+                    pct = min(processed / max(1, total_frames), 0.9)
                     progress_bar.value = pct
                     process_status.value = f"⚙️ Обработка: {int(pct * 100)}%"
                     page.update()
 
             if boomerang_check.value and frames_cache:
-                process_status.value = "⚙️ Запись реверса (бумеранг)..."
+                process_status.value = "⚙️ Запись реверса..."
                 page.update()
                 for f in reversed(frames_cache):
                     out.write(f)
@@ -222,7 +142,7 @@ def main(page: ft.Page):
             out.release()
 
             progress_bar.value = 1.0
-            process_status.value = f"✅ Сохранено в Download/slowmo_{video_dropdown.value}"
+            process_status.value = f"✅ Сохранено: {out_path}"
             process_status.color = "green"
         except Exception as ex:
             process_status.value = f"❌ Ошибка рендера: {ex}"
@@ -231,8 +151,8 @@ def main(page: ft.Page):
         page.update()
 
     def start_processing(e):
-        if not video_dropdown.value:
-            process_status.value = "❌ Ошибка: Выбери видео из списка!"
+        if not selected_video_path:
+            process_status.value = "❌ Сначала выбери видео файл!"
             process_status.color = "red"
             page.update()
             return
@@ -245,33 +165,20 @@ def main(page: ft.Page):
 
         threading.Thread(target=run_rendering).start()
 
-    refresh_file_lists(None)
-
     # ИНТЕРФЕЙС
     page.add(
-        ft.Container(height=30),
-        ft.Text("Alex Slow Mo Studio", size=26, weight="bold", color="#00d2ff"),
+        ft.Container(height=20),
+        ft.Text("Alex Slow Mo Studio", size=24, weight="bold", color="#00d2ff"),
         ft.Divider(height=10, color="transparent"),
 
         ft.Container(
             content=ft.Column([
-                ft.Text("Управление GoPro", size=18, weight="bold"),
-                status_text,
-                ft.Row([
-                    ft.ElevatedButton("Проверить", on_click=check_connection),
-                    rec_btn,
-                ]),
-                ft.ElevatedButton("📥 Скачать последнее видео", on_click=download_last_video)
-            ]),
-            padding=15, border_radius=10, bgcolor="#1e1e24"
-        ),
-
-        ft.Container(
-            content=ft.Column([
                 ft.Text("Файлы для обработки", size=18, weight="bold"),
-                ft.ElevatedButton("🔄 Обновить списки файлов", on_click=refresh_file_lists),
-                video_dropdown,
-                music_dropdown,
+                ft.ElevatedButton("📂 Выбрать видео", on_click=lambda _: video_picker.pick_files(file_type=ft.FilePickerFileType.VIDEO)),
+                video_label,
+                ft.Divider(height=5, color="transparent"),
+                ft.ElevatedButton("🎵 Выбрать музыку", on_click=lambda _: music_picker.pick_files(file_type=ft.FilePickerFileType.AUDIO)),
+                music_label,
             ]),
             padding=15, border_radius=10, bgcolor="#1e1e24"
         ),
