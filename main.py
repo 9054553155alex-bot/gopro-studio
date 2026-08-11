@@ -12,6 +12,21 @@ def main(page: ft.Page):
     page.padding = 16
     page.scroll = ft.ScrollMode.AUTO
 
+    # Запрос разрешений на доступ к медиафайлам при запуске приложения
+    def request_permissions():
+        try:
+            page.permissions.request([
+                "android.permission.READ_EXTERNAL_STORAGE",
+                "android.permission.WRITE_EXTERNAL_STORAGE",
+                "android.permission.READ_MEDIA_VIDEO",
+                "android.permission.READ_MEDIA_AUDIO",
+                "android.permission.MANAGE_EXTERNAL_STORAGE"
+            ])
+        except Exception:
+            pass
+
+    page.on_load = lambda _: request_permissions()
+
     # Цветовая палитра
     CARD_BG = "#1e1e24"
     INPUT_BG = "#18181c"
@@ -22,7 +37,7 @@ def main(page: ft.Page):
     status_text = ft.Text("Готов к работе", color="#a0a0a0", size=13)
     progress_bar = ft.ProgressBar(value=0, visible=False, color=CYAN_ACCENT)
 
-    # 1. Управление GoPro
+    # 1. УПРАВЛЕНИЕ GOPRO
     gopro_status_text = ft.Text("Подключи GoPro к Wi-Fi", color="#ffd54f", size=13)
 
     def check_gopro(e):
@@ -68,7 +83,7 @@ def main(page: ft.Page):
         border_radius=12,
     )
 
-    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ (С изменениями)
+    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ
     video_dd = ft.Dropdown(
         label="Выбери видео из Download",
         bgcolor=INPUT_BG,
@@ -89,9 +104,9 @@ def main(page: ft.Page):
     card_files = ft.Container(
         content=ft.Column([
             ft.Text("Файлы для обработки", weight="bold", size=16),
-            ft.Container(height=5),
+            ft.Container(height=8),  # Отступ под заголовком
             video_dd,
-            ft.Container(height=12),  # Расстояние между выпадающими списками
+            ft.Container(height=16),  # Увеличенный отступ между полями
             music_dd,
         ], spacing=0),
         bgcolor=CARD_BG,
@@ -99,7 +114,7 @@ def main(page: ft.Page):
         border_radius=12,
     )
 
-    # 3. Настройка скорости 5 отрезков
+    # 3. НАСТРОЙКА СКОРОСТИ 5 ОТРЕЗКОВ
     speed_options = [
         ft.dropdown.Option("0.1", "0.1x (Замедл.)"),
         ft.dropdown.Option("0.2", "0.2x (Замедл.)"),
