@@ -104,9 +104,9 @@ def main(page: ft.Page):
     card_files = ft.Container(
         content=ft.Column([
             ft.Text("Файлы для обработки", weight="bold", size=16),
-            ft.Container(height=8),  # Отступ под заголовком
+            ft.Container(height=8),
             video_dd,
-            ft.Container(height=16),  # Увеличенный отступ между полями
+            ft.Container(height=16),
             music_dd,
         ], spacing=0),
         bgcolor=CARD_BG,
@@ -155,13 +155,16 @@ def main(page: ft.Page):
 
     cb_boomerang = ft.Checkbox(label="Эффект Бумеранг (реверс)", value=False)
 
+    # Исправленная кнопка (параметр weight перенесен в text_style)
     btn_process = ft.ElevatedButton(
         "Обработать и сохранить",
         bgcolor=CYAN_ACCENT,
         color="black",
-        weight="bold",
         height=45,
-        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=20))
+        style=ft.ButtonStyle(
+            shape=ft.RoundedRectangleBorder(radius=20),
+            text_style=ft.TextStyle(weight="bold")
+        )
     )
 
     card_settings = ft.Container(
@@ -182,7 +185,6 @@ def main(page: ft.Page):
         border_radius=12,
     )
 
-    # Заголовок приложения
     header = ft.Text("Alex Slow Mo Studio", size=22, weight="bold", color=CYAN_ACCENT)
 
     page.add(
