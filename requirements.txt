@@ -1,2 +1,4 @@
 flet
 requests
+opencv-python-headless
+numpy
