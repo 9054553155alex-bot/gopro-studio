@@ -1,7 +1,7 @@
 import flet as ft
 import requests
 import threading
-import time
+import os
 
 GOPRO_IP = "10.5.5.9"
 
@@ -12,30 +12,12 @@ def main(page: ft.Page):
     page.padding = 16
     page.scroll = ft.ScrollMode.AUTO
 
-    # Запрос разрешений при запуске
-    def request_permissions():
-        try:
-            page.permissions.request([
-                "android.permission.READ_EXTERNAL_STORAGE",
-                "android.permission.WRITE_EXTERNAL_STORAGE",
-                "android.permission.READ_MEDIA_VIDEO",
-                "android.permission.READ_MEDIA_AUDIO",
-                "android.permission.MANAGE_EXTERNAL_STORAGE"
-            ])
-        except Exception:
-            pass
-
-    page.on_load = lambda _: request_permissions()
-
     # Цветовая палитра
     CARD_BG = "#1e1e24"
     INPUT_BG = "#18181c"
     CYAN_ACCENT = "#28c7fa"
     GREEN_ACCENT = "#4caf50"
     BORDER_COLOR = "#33333d"
-
-    selected_video_path = [None]
-    selected_music_path = [None]
 
     status_text = ft.Text("Готов к работе", color="#a0a0a0", size=13)
     progress_bar = ft.ProgressBar(value=0, visible=False, color=CYAN_ACCENT)
@@ -86,67 +68,52 @@ def main(page: ft.Page):
         border_radius=12,
     )
 
-    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ
-    video_label = ft.Text("Выбери видео", color="white", size=14)
-    music_label = ft.Text("Без музыки (нажми для выбора)", color="gray", size=14)
+    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ (Сканирование папок без FilePicker)
+    def get_files_from_dir(path, extensions):
+        files = []
+        if os.path.exists(path):
+            try:
+                for f in os.listdir(path):
+                    if any(f.lower().endswith(ext) for ext in extensions):
+                        files.append(f)
+            except Exception:
+                pass
+        return files
 
-    def on_video_picked(e: ft.FilePickerResultEvent):
-        if e.files and len(e.files) > 0:
-            selected_video_path[0] = e.files[0].path
-            video_label.value = f"🎬 {e.files[0].name}"
-            video_label.color = CYAN_ACCENT
-            page.update()
+    download_path = "/sdcard/Download"
+    music_path = "/sdcard/Music"
 
-    def on_music_picked(e: ft.FilePickerResultEvent):
-        if e.files and len(e.files) > 0:
-            selected_music_path[0] = e.files[0].path
-            music_label.value = f"🎵 {e.files[0].name}"
-            music_label.color = CYAN_ACCENT
-            page.update()
+    video_files = get_files_from_dir(download_path, [".mp4", ".mov", ".mkv"])
+    music_files = get_files_from_dir(music_path, [".mp3", ".wav", ".m4a"])
 
-    video_picker = ft.FilePicker()
-    video_picker.on_result = on_video_picked
+    video_options = [ft.dropdown.Option(f, f) for f in video_files] if video_files else [ft.dropdown.Option("no_files", "Нет видео в Download")]
+    music_options = [ft.dropdown.Option("no_music", "Без музыки")] + [ft.dropdown.Option(f, f) for f in music_files]
 
-    music_picker = ft.FilePicker()
-    music_picker.on_result = on_music_picked
-
-    page.overlay.extend([video_picker, music_picker])
-
-    # Рамка задана через стандартный объект ft.Border без метода .all()
-    side_border = ft.BorderSide(1, BORDER_COLOR)
-    container_border = ft.Border(side_border, side_border, side_border, side_border)
-
-    btn_select_video = ft.Container(
-        content=ft.Column([
-            ft.Text("Видео файл", size=11, color="gray"),
-            ft.Row([video_label, ft.Icon("folder_open", color="gray", size=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-        ], spacing=2),
+    video_dd = ft.Dropdown(
+        label="Выбери видео из Download",
+        value=video_options[0].key,
         bgcolor=INPUT_BG,
-        border=container_border,
+        border_color=BORDER_COLOR,
         border_radius=8,
-        padding=12,
-        on_click=lambda _: video_picker.pick_files(file_type=ft.FilePickerFileType.VIDEO)
+        options=video_options
     )
 
-    btn_select_music = ft.Container(
-        content=ft.Column([
-            ft.Text("Аудио трек", size=11, color="gray"),
-            ft.Row([music_label, ft.Icon("folder_open", color="gray", size=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-        ], spacing=2),
+    music_dd = ft.Dropdown(
+        label="Выбери трек из Music",
+        value="no_music",
         bgcolor=INPUT_BG,
-        border=container_border,
+        border_color=BORDER_COLOR,
         border_radius=8,
-        padding=12,
-        on_click=lambda _: music_picker.pick_files(file_type=ft.FilePickerFileType.AUDIO)
+        options=music_options
     )
 
     card_files = ft.Container(
         content=ft.Column([
             ft.Text("Файлы для обработки", weight="bold", size=16),
             ft.Container(height=8),
-            btn_select_video,
-            ft.Container(height=12),
-            btn_select_music,
+            video_dd,
+            ft.Container(height=16),
+            music_dd,
         ], spacing=0),
         bgcolor=CARD_BG,
         padding=16,
