@@ -170,7 +170,6 @@ def main(page: ft.Page):
                 elif res_val == "4k":
                     scale = "scale=3840:2160"
 
-                # Базовая команда FFmpeg
                 cmd = [
                     "ffmpeg", "-y", "-i", in_video,
                     "-vf", f"{scale},setpts={1/float(s1.value)}*PTS",
@@ -185,7 +184,7 @@ def main(page: ft.Page):
                         if m:
                             h, mn, s = map(float, m.groups())
                             cur_sec = h * 3600 + mn * 60 + s
-                            pct = min(cur_sec / 15.0, 1.0)  # Расчет %
+                            pct = min(cur_sec / 15.0, 1.0)
                             progress_bar.value = pct
                             process_status.value = f"⚙️ Обработка: {int(pct * 100)}%"
                             page.update()
@@ -201,7 +200,6 @@ def main(page: ft.Page):
 
         threading.Thread(target=render_thread).start()
 
-    # Первичная загрузка списков
     refresh_file_lists(None)
 
     # ИНТЕРФЕЙС
@@ -227,7 +225,7 @@ def main(page: ft.Page):
             content=ft.Column([
                 ft.Row([
                     ft.Text("Файлы для обработки", size=18, weight="bold"),
-                    ft.IconButton(icon=ft.icons.REFRESH, on_click=refresh_file_lists)
+                    ft.IconButton(icon="refresh", on_click=refresh_file_lists)
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                 video_dropdown,
                 music_dropdown,
