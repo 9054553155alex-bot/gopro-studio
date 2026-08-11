@@ -12,7 +12,7 @@ def main(page: ft.Page):
     page.padding = 16
     page.scroll = ft.ScrollMode.AUTO
 
-    # Запрос разрешений на доступ к медиафайлам при запуске приложения
+    # Запрос разрешений при запуске
     def request_permissions():
         try:
             page.permissions.request([
@@ -33,6 +33,9 @@ def main(page: ft.Page):
     CYAN_ACCENT = "#28c7fa"
     GREEN_ACCENT = "#4caf50"
     BORDER_COLOR = "#33333d"
+
+    selected_video_path = [None]
+    selected_music_path = [None]
 
     status_text = ft.Text("Готов к работе", color="#a0a0a0", size=13)
     progress_bar = ft.ProgressBar(value=0, visible=False, color=CYAN_ACCENT)
@@ -83,31 +86,59 @@ def main(page: ft.Page):
         border_radius=12,
     )
 
-    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ
-    video_dd = ft.Dropdown(
-        label="Выбери видео из Download",
+    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ (С ВЫЗОВОМ ПРОВОДНИКА)
+    video_label = ft.Text("Выбери видео", color="white", size=14)
+    music_label = ft.Text("Без музыки (нажми для выбора)", color="gray", size=14)
+
+    def on_video_picked(e: ft.FilePickerResultEvent):
+        if e.files and len(e.files) > 0:
+            selected_video_path[0] = e.files[0].path
+            video_label.value = f"🎬 {e.files[0].name}"
+            video_label.color = CYAN_ACCENT
+            page.update()
+
+    def on_music_picked(e: ft.FilePickerResultEvent):
+        if e.files and len(e.files) > 0:
+            selected_music_path[0] = e.files[0].path
+            music_label.value = f"🎵 {e.files[0].name}"
+            music_label.color = CYAN_ACCENT
+            page.update()
+
+    video_picker = ft.FilePicker(on_result=on_video_picked)
+    music_picker = ft.FilePicker(on_result=on_music_picked)
+    page.overlay.extend([video_picker, music_picker])
+
+    btn_select_video = ft.Container(
+        content=ft.Column([
+            ft.Text("Видео файл", size=11, color="gray"),
+            ft.Row([video_label, ft.Icon(ft.icons.FOLDER_OPEN, color="gray", size=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        ], spacing=2),
         bgcolor=INPUT_BG,
-        border_color=BORDER_COLOR,
+        border=ft.border.all(1, BORDER_COLOR),
         border_radius=8,
-        options=[ft.dropdown.Option("video1.mp4", "video1.mp4")]
+        padding=12,
+        on_click=lambda _: video_picker.pick_files(file_type=ft.FilePickerFileType.VIDEO)
     )
 
-    music_dd = ft.Dropdown(
-        label="Выбери трек из Music",
-        value="no_music",
+    btn_select_music = ft.Container(
+        content=ft.Column([
+            ft.Text("Аудио трек", size=11, color="gray"),
+            ft.Row([music_label, ft.Icon(ft.icons.FOLDER_OPEN, color="gray", size=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        ], spacing=2),
         bgcolor=INPUT_BG,
-        border_color=BORDER_COLOR,
+        border=ft.border.all(1, BORDER_COLOR),
         border_radius=8,
-        options=[ft.dropdown.Option("no_music", "Без музыки")]
+        padding=12,
+        on_click=lambda _: music_picker.pick_files(file_type=ft.FilePickerFileType.AUDIO)
     )
 
     card_files = ft.Container(
         content=ft.Column([
             ft.Text("Файлы для обработки", weight="bold", size=16),
             ft.Container(height=8),
-            video_dd,
-            ft.Container(height=16),
-            music_dd,
+            btn_select_video,
+            ft.Container(height=12),
+            btn_select_music,
         ], spacing=0),
         bgcolor=CARD_BG,
         padding=16,
@@ -155,7 +186,6 @@ def main(page: ft.Page):
 
     cb_boomerang = ft.Checkbox(label="Эффект Бумеранг (реверс)", value=False)
 
-    # Исправленная кнопка (параметр weight перенесен в text_style)
     btn_process = ft.ElevatedButton(
         "Обработать и сохранить",
         bgcolor=CYAN_ACCENT,
