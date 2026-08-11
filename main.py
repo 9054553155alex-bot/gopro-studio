@@ -86,7 +86,7 @@ def main(page: ft.Page):
         border_radius=12,
     )
 
-    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ (С ВЫЗОВОМ ПРОВОДНИКА)
+    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ (ИСПРАВЛЕННЫЙ ВЫЗОВ FILEPICKER)
     video_label = ft.Text("Выбери видео", color="white", size=14)
     music_label = ft.Text("Без музыки (нажми для выбора)", color="gray", size=14)
 
@@ -104,8 +104,13 @@ def main(page: ft.Page):
             music_label.color = CYAN_ACCENT
             page.update()
 
-    video_picker = ft.FilePicker(on_result=on_video_picked)
-    music_picker = ft.FilePicker(on_result=on_music_picked)
+    # Раздельная инициализация и назначение event-handler'а
+    video_picker = ft.FilePicker()
+    video_picker.on_result = on_video_picked
+
+    music_picker = ft.FilePicker()
+    music_picker.on_result = on_music_picked
+
     page.overlay.extend([video_picker, music_picker])
 
     btn_select_video = ft.Container(
