@@ -112,13 +112,17 @@ def main(page: ft.Page):
 
     page.overlay.extend([video_picker, music_picker])
 
+    # Рамка задана через стандартный объект ft.Border без метода .all()
+    side_border = ft.BorderSide(1, BORDER_COLOR)
+    container_border = ft.Border(side_border, side_border, side_border, side_border)
+
     btn_select_video = ft.Container(
         content=ft.Column([
             ft.Text("Видео файл", size=11, color="gray"),
             ft.Row([video_label, ft.Icon("folder_open", color="gray", size=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
         ], spacing=2),
         bgcolor=INPUT_BG,
-        border=ft.border.all(1, BORDER_COLOR),
+        border=container_border,
         border_radius=8,
         padding=12,
         on_click=lambda _: video_picker.pick_files(file_type=ft.FilePickerFileType.VIDEO)
@@ -130,7 +134,7 @@ def main(page: ft.Page):
             ft.Row([music_label, ft.Icon("folder_open", color="gray", size=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
         ], spacing=2),
         bgcolor=INPUT_BG,
-        border=ft.border.all(1, BORDER_COLOR),
+        border=container_border,
         border_radius=8,
         padding=12,
         on_click=lambda _: music_picker.pick_files(file_type=ft.FilePickerFileType.AUDIO)
