@@ -5,15 +5,13 @@ def main(page: ft.Page):
     page.title = "Alex Slow Mo Studio"
     page.theme_mode = ft.ThemeMode.DARK
     page.scroll = ft.ScrollMode.AUTO
-    
-    # Безопасный отступ сверху для статус-бара
-    page.padding = ft.Padding(left=20, top=50, right=20, bottom=30)
+    page.padding = 20
 
     # Переменные состояния
     selected_file = ft.Text("Файл не выбран", color="grey", size=14)
     status_text = ft.Text("Подключи GoPro к Wi-Fi", color="yellow", size=15)
 
-    # 1. Логика управления GoPro
+    # 1. Управление GoPro
     def check_connection(e):
         try:
             resp = requests.get("http://10.5.5.9/gp/gpControl", timeout=2)
@@ -38,22 +36,13 @@ def main(page: ft.Page):
             status_text.value = "❌ Нет связи с GoPro"
         page.update()
 
-    # 2. Выбор файлов (исправленная логика)
-    def pick_video_result(e: ft.FilePickerResultEvent):
-        if e.files:
-            selected_file.value = f"📹 Видео: {e.files[0].name}"
-            selected_file.color = "white"
-            page.update()
-
-    file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)
-
     # ИНТЕРФЕЙС ПРИЛОЖЕНИЯ
     page.add(
+        ft.Container(height=30),  # Отступ под статус-бар
         ft.Text("Alex Slow Mo Studio", size=26, weight="bold", color="#00d2ff"),
         ft.Divider(height=15, color="transparent"),
 
-        # Блок управления GoPro
+        # Блок GoPro
         ft.Container(
             content=ft.Column([
                 ft.Text("Управление GoPro", size=18, weight="bold"),
@@ -62,8 +51,6 @@ def main(page: ft.Page):
                     ft.ElevatedButton("Проверить", on_click=check_connection),
                     ft.ElevatedButton(
                         "Запись", 
-                        icon=ft.icons.FIBER_MANUAL_RECORD, 
-                        icon_color="white", 
                         bgcolor="red", 
                         color="white",
                         on_click=start_record
@@ -77,19 +64,11 @@ def main(page: ft.Page):
 
         ft.Divider(height=15, color="transparent"),
 
-        # Блок обработки видео
+        # Блок обработки
         ft.Container(
             content=ft.Column([
                 ft.Text("Обработка видео", size=18, weight="bold"),
-                ft.ElevatedButton(
-                    "Выбрать видео", 
-                    icon=ft.icons.VIDEO_LIBRARY,
-                    on_click=lambda _: file_picker.pick_files(
-                        allow_multiple=False, 
-                        allowed_extensions=["mp4", "mov"],
-                        on_result=pick_video_result
-                    )
-                ),
+                ft.TextField(label="Путь к файлу или имя", value="video.mp4"),
                 selected_file,
                 
                 ft.Divider(height=10, color="gray"),
@@ -99,12 +78,11 @@ def main(page: ft.Page):
                 
                 ft.Divider(height=10, color="gray"),
                 
-                ft.ElevatedButton("Добавить музыку", icon=ft.icons.MUSIC_NOTE),
+                ft.ElevatedButton("Добавить музыку"),
                 
                 ft.Divider(height=15, color="transparent"),
                 ft.ElevatedButton(
                     "Обработать и сохранить", 
-                    icon=ft.icons.AUTO_FIX_HIGH,
                     bgcolor="#00d2ff", 
                     color="black"
                 )
