@@ -3,6 +3,8 @@ import os
 import threading
 import cv2
 
+DOWNLOAD_DIR = "/storage/emulated/0/Download"
+
 def main(page: ft.Page):
     page.title = "Alex Slow Mo Studio"
     page.theme_mode = ft.ThemeMode.DARK
@@ -12,41 +14,34 @@ def main(page: ft.Page):
     process_status = ft.Text("Готов к работе", color="gray", size=14)
     progress_bar = ft.ProgressBar(value=0, width=400, visible=False)
 
-    # Пути выбранных файлов
-    selected_video_path = None
-    selected_music_path = None
+    # Выпадающий список файлов из папки Download
+    video_dropdown = ft.Dropdown(
+        label="Выбери видео из папки Download",
+        width=350,
+        options=[]
+    )
 
-    video_label = ft.Text("Видео не выбрано", color="orange")
-    music_label = ft.Text("Музыка не выбрана (без музыки)", color="gray")
+    def scan_downloads(e=None):
+        video_dropdown.options.clear()
+        if os.path.exists(DOWNLOAD_DIR):
+            try:
+                files = [f for f in os.listdir(DOWNLOAD_DIR) if f.lower().endswith(('.mp4', '.mov', '.mkv', '.avi'))]
+                if files:
+                    for f in files:
+                        video_dropdown.options.append(ft.dropdown.Option(f))
+                    process_status.value = f"Найдено видео: {len(files)}"
+                    process_status.color = "green"
+                else:
+                    process_status.value = "Папка Download пуста или нет видеофайлов"
+                    process_status.color = "orange"
+            except Exception as ex:
+                process_status.value = f"Ошибка чтения папки: {ex}"
+                process_status.color = "red"
+        else:
+            process_status.value = "Папка Download не найдена"
+            process_status.color = "red"
+        page.update()
 
-    # 1. НАТИВНЫЙ ВЫБОР ФАЙЛОВ (Исправленный синтаксис Flet)
-    def on_video_selected(e: ft.FilePickerResultEvent):
-        nonlocal selected_video_path
-        if e.files:
-            selected_video_path = e.files[0].path
-            video_label.value = f"✅ Видео: {e.files[0].name}"
-            video_label.color = "green"
-            page.update()
-
-    def on_music_selected(e: ft.FilePickerResultEvent):
-        nonlocal selected_music_path
-        if e.files:
-            selected_music_path = e.files[0].path
-            music_label.value = f"🎵 Трек: {e.files[0].name}"
-            music_label.color = "green"
-            page.update()
-
-    # Создание компонентов FilePicker без параметров в __init__
-    video_picker = ft.FilePicker()
-    video_picker.on_result = on_video_selected
-
-    music_picker = ft.FilePicker()
-    music_picker.on_result = on_music_selected
-
-    page.overlay.append(video_picker)
-    page.overlay.append(music_picker)
-
-    # 2. НАСТРОЙКИ СКОРОСТИ И РАЗРЕШЕНИЯ
     speed_options = [
         ft.dropdown.Option("0.1", "0.1x (Замедл)"),
         ft.dropdown.Option("0.2", "0.2x (Замедл)"),
@@ -73,18 +68,13 @@ def main(page: ft.Page):
 
     boomerang_check = ft.Checkbox(label="Эффект Бумеранг (реверс)", value=False)
 
-    # 3. ОБРАБОТКА ВИДЕО ЧЕРЕЗ OPENCV
-    def run_rendering():
+    def run_rendering(video_path):
         try:
-            out_dir = "/storage/emulated/0/Download"
-            if not os.path.exists(out_dir):
-                out_dir = os.path.dirname(selected_video_path)
-                
-            out_path = os.path.join(out_dir, "slowmo_result.mp4")
+            out_path = os.path.join(DOWNLOAD_DIR, "slowmo_result.mp4")
 
-            cap = cv2.VideoCapture(selected_video_path)
+            cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
-                process_status.value = "❌ Ошибка: Не удалось открыть файл!"
+                process_status.value = f"❌ Не удалось открыть: {video_path}"
                 process_status.color = "red"
                 progress_bar.visible = False
                 page.update()
@@ -147,7 +137,7 @@ def main(page: ft.Page):
             out.release()
 
             progress_bar.value = 1.0
-            process_status.value = f"✅ Сохранено: {out_path}"
+            process_status.value = f"✅ Готово! Сохранено: slowmo_result.mp4"
             process_status.color = "green"
         except Exception as ex:
             process_status.value = f"❌ Ошибка рендера: {ex}"
@@ -156,11 +146,13 @@ def main(page: ft.Page):
         page.update()
 
     def start_processing(e):
-        if not selected_video_path:
-            process_status.value = "❌ Сначала выбери видео файл!"
+        if not video_dropdown.value:
+            process_status.value = "❌ Выберите видео из списка!"
             process_status.color = "red"
             page.update()
             return
+
+        full_path = os.path.join(DOWNLOAD_DIR, video_dropdown.value)
 
         progress_bar.visible = True
         progress_bar.value = 0.05
@@ -168,22 +160,21 @@ def main(page: ft.Page):
         process_status.color = "cyan"
         page.update()
 
-        threading.Thread(target=run_rendering).start()
+        threading.Thread(target=run_rendering, args=(full_path,)).start()
 
-    # ИНТЕРФЕЙС
+    # Первичный сканирование при запуске
+    scan_downloads()
+
     page.add(
-        ft.Container(height=20),
+        ft.Container(height=10),
         ft.Text("Alex Slow Mo Studio", size=24, weight="bold", color="#00d2ff"),
         ft.Divider(height=10, color="transparent"),
 
         ft.Container(
             content=ft.Column([
-                ft.Text("Файлы для обработки", size=18, weight="bold"),
-                ft.ElevatedButton("📂 Выбрать видео", on_click=lambda _: video_picker.pick_files(file_type=ft.FilePickerFileType.VIDEO)),
-                video_label,
-                ft.Divider(height=5, color="transparent"),
-                ft.ElevatedButton("🎵 Выбрать музыку", on_click=lambda _: music_picker.pick_files(file_type=ft.FilePickerFileType.AUDIO)),
-                music_label,
+                ft.Text("Файл для обработки", size=18, weight="bold"),
+                video_dropdown,
+                ft.ElevatedButton("🔄 Обновить список файлов", on_click=scan_downloads)
             ]),
             padding=15, border_radius=10, bgcolor="#1e1e24"
         ),
