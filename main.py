@@ -5,6 +5,26 @@ import os
 
 GOPRO_IP = "10.5.5.9"
 
+# Функция получения реальных путей Android через Java API
+def get_android_dir(dir_type):
+    try:
+        from jnius import autoclass
+        Environment = autoclass('android.os.Environment')
+        if dir_type == "DOWNLOAD":
+            return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getAbsolutePath()
+        elif dir_type == "MUSIC":
+            return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC).getAbsolutePath()
+    except Exception:
+        # Резервные пути для тестирования
+        paths = {
+            "DOWNLOAD": ["/storage/emulated/0/Download", "/sdcard/Download"],
+            "MUSIC": ["/storage/emulated/0/Music", "/sdcard/Music"]
+        }
+        for p in paths.get(dir_type, []):
+            if os.path.exists(p):
+                return p
+    return None
+
 def main(page: ft.Page):
     page.title = "Alex Slow Mo Studio"
     page.theme_mode = ft.ThemeMode.DARK
@@ -12,7 +32,6 @@ def main(page: ft.Page):
     page.padding = 16
     page.scroll = ft.ScrollMode.AUTO
 
-    # Цветовая палитра
     CARD_BG = "#1e1e24"
     INPUT_BG = "#18181c"
     CYAN_ACCENT = "#28c7fa"
@@ -68,49 +87,60 @@ def main(page: ft.Page):
         border_radius=12,
     )
 
-    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ (Сканирование папок без FilePicker)
-    def get_files_from_dir(path, extensions):
-        files = []
-        if os.path.exists(path):
-            try:
-                for f in os.listdir(path):
-                    if any(f.lower().endswith(ext) for ext in extensions):
-                        files.append(f)
-            except Exception:
-                pass
-        return files
-
-    download_path = "/sdcard/Download"
-    music_path = "/sdcard/Music"
-
-    video_files = get_files_from_dir(download_path, [".mp4", ".mov", ".mkv"])
-    music_files = get_files_from_dir(music_path, [".mp3", ".wav", ".m4a"])
-
-    video_options = [ft.dropdown.Option(f, f) for f in video_files] if video_files else [ft.dropdown.Option("no_files", "Нет видео в Download")]
-    music_options = [ft.dropdown.Option("no_music", "Без музыки")] + [ft.dropdown.Option(f, f) for f in music_files]
-
+    # 2. ФАЙЛЫ ДЛЯ ОБРАБОТКИ
     video_dd = ft.Dropdown(
         label="Выбери видео из Download",
-        value=video_options[0].key,
         bgcolor=INPUT_BG,
         border_color=BORDER_COLOR,
         border_radius=8,
-        options=video_options
+        options=[]
     )
 
     music_dd = ft.Dropdown(
         label="Выбери трек из Music",
-        value="no_music",
         bgcolor=INPUT_BG,
         border_color=BORDER_COLOR,
         border_radius=8,
-        options=music_options
+        options=[]
     )
+
+    def scan_files(e=None):
+        dl_dir = get_android_dir("DOWNLOAD")
+        m_dir = get_android_dir("MUSIC")
+
+        v_list = []
+        if dl_dir and os.path.exists(dl_dir):
+            try:
+                v_list = [f for f in os.listdir(dl_dir) if f.lower().endswith(('.mp4', '.mov', '.mkv'))]
+            except Exception:
+                pass
+
+        m_list = []
+        if m_dir and os.path.exists(m_dir):
+            try:
+                m_list = [f for f in os.listdir(m_dir) if f.lower().endswith(('.mp3', '.wav', '.m4a'))]
+            except Exception:
+                pass
+
+        if v_list:
+            video_dd.options = [ft.dropdown.Option(f, f) for f in v_list]
+            video_dd.value = v_list[0]
+        else:
+            video_dd.options = [ft.dropdown.Option("none", "Нет видео в Download")]
+            video_dd.value = "none"
+
+        music_dd.options = [ft.dropdown.Option("no_music", "Без музыки")] + [ft.dropdown.Option(f, f) for f in m_list]
+        music_dd.value = "no_music"
+
+        page.update()
 
     card_files = ft.Container(
         content=ft.Column([
-            ft.Text("Файлы для обработки", weight="bold", size=16),
-            ft.Container(height=8),
+            ft.Row([
+                ft.Text("Файлы для обработки", weight="bold", size=16),
+                ft.IconButton("refresh", icon_color=CYAN_ACCENT, on_click=scan_files, tooltip="Обновить список")
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Container(height=4),
             video_dd,
             ft.Container(height=16),
             music_dd,
@@ -120,7 +150,7 @@ def main(page: ft.Page):
         border_radius=12,
     )
 
-    # 3. НАСТРОЙКА СКОРОСТИ 5 ОТРЕЗКОВ
+    # 3. НАСТРОЙКА СКОРОСТИ
     speed_options = [
         ft.dropdown.Option("0.1", "0.1x (Замедл.)"),
         ft.dropdown.Option("0.2", "0.2x (Замедл.)"),
@@ -199,5 +229,8 @@ def main(page: ft.Page):
         card_settings,
         progress_bar
     )
+
+    # Первичная загрузка списка файлов
+    scan_files()
 
 ft.app(target=main)
