@@ -136,7 +136,7 @@ def main(page: ft.Page):
         content=ft.Column([
             ft.Row([
                 ft.Text("Файлы для обработки", weight="bold", size=16),
-                ft.IconButton(icon=ft.icons.REFRESH, icon_color=CYAN_ACCENT, on_click=scan_files, tooltip="Обновить список")
+                ft.TextButton("Обновить", style=ft.ButtonStyle(color=CYAN_ACCENT), on_click=scan_files)
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Container(height=4),
             video_dd,
